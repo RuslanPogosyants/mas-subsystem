@@ -61,8 +61,7 @@ def test_any_required_failed_means_failed(required: list[str], optional: list[st
 @settings(max_examples=50)
 @given(required=required_strategy, optional=optional_strategy)
 def test_only_optional_failed_means_partial_ready(required: list[str], optional: list[str]) -> None:
-    if not optional:
-        return
+    assume(optional)
     assume(not (set(required) & set(optional)))
     plan = _make_plan(required, optional)
     results: dict[str, object] = {subtask_id: {"ok": True} for subtask_id in required}
@@ -75,3 +74,17 @@ def test_only_optional_failed_means_partial_ready(required: list[str], optional:
 def test_empty_plan_completed() -> None:
     plan = Plan(task_id="task-x", subtasks=[])
     assert determine_final_status(plan, {}) == TaskStatus.COMPLETED
+
+
+def test_missing_required_result_means_failed() -> None:
+    """A required subtask absent from `results` (never reported) counts as failed."""
+    plan = _make_plan(required_ids=["st-a"], optional_ids=["st-b"])
+    results: dict[str, object | None] = {"st-b": {"ok": True}}
+    assert determine_final_status(plan, results) == TaskStatus.FAILED
+
+
+def test_missing_optional_result_means_partial_ready() -> None:
+    """An optional subtask absent from `results` degrades to partial_ready."""
+    plan = _make_plan(required_ids=["st-a"], optional_ids=["st-b"])
+    results: dict[str, object | None] = {"st-a": {"ok": True}}
+    assert determine_final_status(plan, results) == TaskStatus.PARTIAL_READY

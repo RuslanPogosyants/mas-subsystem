@@ -57,7 +57,9 @@ def test_plan_subtasks_only_from_requested_operations(operations: list[Operation
     task = _make_task(operations, with_audio=True, with_pdf=True)
     plan = build_plan(task)
     plan_ops = {subtask.operation for subtask in plan.subtasks}
-    assert plan_ops.issubset(set(operations))
+    # With both audio and pdf attached every requested operation is eligible:
+    # subset alone is too weak — it would pass for build_plan -> empty.
+    assert plan_ops == set(operations)
 
 
 @settings(max_examples=50)

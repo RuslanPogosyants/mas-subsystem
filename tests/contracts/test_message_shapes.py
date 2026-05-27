@@ -29,6 +29,7 @@ class TestRequestMessageShape:
             "reply_to",
             "timestamp",
             "in_reply_to",
+            "subtask_id",
         }
         assert set(dumped.keys()) == expected_fields
 
@@ -88,8 +89,21 @@ class TestInformMessageShape:
             conversation_id="conv-7c41-3",
             content={"summary_id": "sum-7c41", "sections": []},
             in_reply_to="msg-9f2a",
+            subtask_id="st-task-7c41-F3",
         )
         assert msg.in_reply_to == "msg-9f2a"
+        assert msg.subtask_id == "st-task-7c41-F3"
+
+    def test_request_omits_subtask_id_by_default(self) -> None:
+        msg = make_message(
+            performative=Performative.REQUEST,
+            sender="CoordinatorAgent",
+            receiver="SummarizerAgent",
+            task_id="task-7c41",
+            conversation_id="conv-7c41-3",
+            content={},
+        )
+        assert msg.subtask_id is None
 
 
 class TestPerformativeWhitelist:

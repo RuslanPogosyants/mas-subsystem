@@ -1,0 +1,41 @@
+"""Behavioral contract for POST /api/tasks. RED until M2."""
+
+from __future__ import annotations
+
+import pytest
+from fastapi.testclient import TestClient
+from src.main import app
+
+client = TestClient(app)
+
+
+@pytest.mark.e2e
+class TestPostTasksContract:
+    def test_post_tasks_returns_202_with_task_id(self) -> None:
+        response = client.post(
+            "/api/tasks",
+            files=[("files", ("lecture.mp3", b"audio-bytes", "audio/mpeg"))],
+            data={"ops": ["F1"]},
+        )
+        assert response.status_code == 202
+        body = response.json()
+        assert "task_id" in body
+        assert body["task_id"].startswith("task-")
+        assert body["status"] == "planning"
+
+
+@pytest.mark.e2e
+class TestGetResultContract:
+    def test_get_result_returns_425_if_not_ready(self) -> None:
+        post = client.post(
+            "/api/tasks",
+            files=[("files", ("lecture.mp3", b"audio-bytes", "audio/mpeg"))],
+            data={"ops": ["F1"]},
+        )
+        task_id = post.json()["task_id"]
+        response = client.get(f"/api/tasks/{task_id}/result")
+        assert response.status_code == 425
+
+    def test_get_result_returns_404_for_unknown_task(self) -> None:
+        response = client.get("/api/tasks/task-nonexistent/result")
+        assert response.status_code == 404

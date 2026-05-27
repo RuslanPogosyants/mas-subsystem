@@ -6,7 +6,6 @@ VKR thesis section 2.3.7: the coordinator receives a Task, builds a plan
 
 from __future__ import annotations
 
-import uuid
 from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -42,7 +41,12 @@ class Subtask(BaseModel):
 
 
 class Plan(BaseModel):
-    """Execution plan for a Task. Produced by `build_plan`."""
+    """Execution plan for a Task. Produced by `build_plan`.
+
+    Subtask ids are deterministic in `(task_id, operation)` so the plan can be
+    rebuilt identically after a Coordinator restart and existing Redis Stream
+    replies still correlate to pending subtasks (spec section 8.7 recovery).
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -50,20 +54,32 @@ class Plan(BaseModel):
     subtasks: list[Subtask]
     max_total_timeout_sec: float = 1800.0
 
+    def _by_id(self) -> dict[str, Subtask]:
+        return {subtask.id: subtask for subtask in self.subtasks}
+
+    def get(self, subtask_id: str) -> Subtask:
+        """Return the Subtask with the given id, or raise KeyError."""
+        index = self._by_id()
+        if subtask_id not in index:
+            raise KeyError(f"unknown subtask id: {subtask_id!r}")
+        return index[subtask_id]
+
     def is_required(self, subtask_id: str) -> bool:
-        return any(subtask.required for subtask in self.subtasks if subtask.id == subtask_id)
+        return self.get(subtask_id).required
 
     def is_optional(self, subtask_id: str) -> bool:
-        return any(not subtask.required for subtask in self.subtasks if subtask.id == subtask_id)
-
-    def get(self, subtask_id: str) -> Subtask | None:
-        return next((subtask for subtask in self.subtasks if subtask.id == subtask_id), None)
+        return not self.is_required(subtask_id)
 
 
 DEPENDENCY_MAP: Final[dict[Operation, Operation]] = {
     Operation.F4_TEST: Operation.F3_SUMMARIZE,
     Operation.F6_RECOMMEND: Operation.F5_TERMS,
 }
+
+
+def subtask_id_for(task_id: str, operation: Operation) -> str:
+    """Deterministic subtask id; stable across Coordinator restarts."""
+    return f"st-{task_id}-{operation.value}"
 
 
 def _eligible_operations(task: Task) -> list[Operation]:
@@ -80,23 +96,33 @@ def _eligible_operations(task: Task) -> list[Operation]:
     return eligible
 
 
+def _dependencies(operation: Operation, eligible: set[Operation], task_id: str) -> list[str]:
+    """Return the depends_on list for `operation`, filtered to eligible operations."""
+    upstream = DEPENDENCY_MAP.get(operation)
+    if upstream is None or upstream not in eligible:
+        return []
+    return [subtask_id_for(task_id, upstream)]
+
+
 def build_plan(task: Task) -> Plan:
     """Build a Plan from a Task.
 
     F1 / F2 emit subtasks only when matching documents are attached. Optional
     operations (F3-F6) emit unconditionally; F4 depends on F3 and F6 on F5,
     when those upstream subtasks are also in the plan.
+
+    Note: in M1 every Subtask is built with an empty `payload`. The Coordinator
+    dispatch loop (M2) will inject the per-agent input (file_path for F1/F2,
+    upstream Summary/Terms for F4/F6) at publish time.
     """
     eligible = _eligible_operations(task)
-    operation_to_id: dict[Operation, str] = {operation: f"st-{uuid.uuid4().hex[:8]}" for operation in eligible}
+    eligible_set = set(eligible)
     subtasks = [
         Subtask(
-            id=operation_to_id[operation],
+            id=subtask_id_for(task.id, operation),
             agent=OPERATION_TO_AGENT[operation],
             operation=operation,
-            depends_on=(
-                [operation_to_id[DEPENDENCY_MAP[operation]]] if DEPENDENCY_MAP.get(operation) in operation_to_id else []
-            ),
+            depends_on=_dependencies(operation, eligible_set, task.id),
             required=OPERATION_TO_AGENT[operation] in REQUIRED_AGENTS,
         )
         for operation in eligible

@@ -20,6 +20,26 @@ alembic upgrade head
 pytest
 ```
 
+## Test status
+
+| Layer | Green | Red | xfail | Green target |
+|---|---|---|---|---|
+| contracts | yes | yes | — | M0 (data shape fixed) |
+| unit | partial | yes | — | M1 (algorithm implementation) |
+| e2e | — | yes | yes | M2-M4 (pipeline implementation) |
+
+Run locally:
+
+```powershell
+pytest -v
+```
+
+Run only the M0 green baseline:
+
+```powershell
+pytest tests\contracts -v
+```
+
 ## Architecture
 
 Seven agents (TranscriberAgent, OCRAgent, SummarizerAgent, TestGeneratorAgent, TerminologyAgent, RecommenderAgent, CoordinatorAgent) communicate over Redis Streams under a FIPA-ACL-like protocol. See `ARCHITECTURE.md` (added in M4).

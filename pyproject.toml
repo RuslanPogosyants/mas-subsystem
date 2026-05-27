@@ -92,6 +92,18 @@ exclude = ["migrations/", "scripts/"]
 module = ["easyocr.*", "faster_whisper.*", "gigachat.*", "sentence_transformers.*", "fitz.*", "spacy.*"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = ["redis.*"]
+ignore_missing_imports = true
+
+# redis-py 5.x ships partial inline types; async client methods like xack /
+# xpending lack return annotations and the Redis generic has unfilled type
+# args. Disabling these two codes only inside the thin bus wrapper keeps the
+# rest of the codebase under --strict.
+[[tool.mypy.overrides]]
+module = ["src.core.bus"]
+disable_error_code = ["no-untyped-call", "type-arg"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

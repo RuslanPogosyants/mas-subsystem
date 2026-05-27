@@ -70,6 +70,18 @@ class Plan(BaseModel):
     def is_optional(self, subtask_id: str) -> bool:
         return not self.is_required(subtask_id)
 
+    def stage1(self) -> list[Subtask]:
+        """Subtasks with no upstream dependencies (executed first)."""
+        return [subtask for subtask in self.subtasks if not subtask.depends_on]
+
+    def stage2(self) -> list[Subtask]:
+        """Subtasks that wait for stage 1 results."""
+        return [subtask for subtask in self.subtasks if subtask.depends_on]
+
+    def all_stage1_done(self, results: dict[str, object | None]) -> bool:
+        """True when every stage-1 subtask has a result (success or refuse)."""
+        return all(subtask.id in results for subtask in self.stage1())
+
 
 DEPENDENCY_MAP: Final[dict[Operation, Operation]] = {
     Operation.F4_TEST: Operation.F3_SUMMARIZE,

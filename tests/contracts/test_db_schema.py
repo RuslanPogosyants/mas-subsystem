@@ -57,7 +57,7 @@ class TestSchemaMatchesERDiagram:
     async def test_tasks_has_required_columns(self, engine_with_migrations: AsyncEngine) -> None:
         async with engine_with_migrations.connect() as conn:
             result = await conn.execute(
-                text("SELECT column_name FROM information_schema.columns " "WHERE table_name = 'tasks'")
+                text("SELECT column_name FROM information_schema.columns WHERE table_name = 'tasks'")
             )
             columns = {row[0] for row in result.all()}
         expected = {
@@ -75,7 +75,7 @@ class TestSchemaMatchesERDiagram:
     async def test_text_chunks_has_task_and_document_fk(self, engine_with_migrations: AsyncEngine) -> None:
         async with engine_with_migrations.connect() as conn:
             result = await conn.execute(
-                text("SELECT column_name FROM information_schema.columns " "WHERE table_name = 'text_chunks'")
+                text("SELECT column_name FROM information_schema.columns WHERE table_name = 'text_chunks'")
             )
             columns = {row[0] for row in result.all()}
         expected = {

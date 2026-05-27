@@ -37,7 +37,7 @@ def validate(subject: str) -> str | None:
 
     word_count = len(description.split())
     if not MIN_WORDS <= word_count <= MAX_WORDS:
-        return f"description must be {MIN_WORDS}-{MAX_WORDS} words, " f"got {word_count}: {description!r}"
+        return f"description must be {MIN_WORDS}-{MAX_WORDS} words, got {word_count}: {description!r}"
 
     return None
 

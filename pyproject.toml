@@ -52,3 +52,51 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W", "I", "N", "UP", "B", "A", "C4", "SIM", "TCH", "RUF",
+    "PLR", "PLW", "PLE",
+]
+ignore = [
+    "B008",
+    "PLR0913",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101", "N802", "PLR2004"]
+
+[tool.ruff.lint.pylint]
+max-args = 5
+max-statements = 30
+
+[tool.ruff.lint.mccabe]
+max-complexity = 8
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+plugins = ["pydantic.mypy"]
+exclude = ["migrations/", "scripts/"]
+
+[[tool.mypy.overrides]]
+module = ["easyocr.*", "faster_whisper.*", "gigachat.*", "sentence_transformers.*", "fitz.*", "spacy.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-ra --strict-markers"
+markers = [
+    "slow: tests requiring real ML models (excluded from CI)",
+    "integration: tests requiring Redis/Postgres via testcontainers",
+    "e2e: end-to-end acceptance tests",
+]

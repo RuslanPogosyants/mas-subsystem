@@ -25,8 +25,8 @@ pytest
 
 | Layer | Green | Red | xfail | Green target |
 |---|---|---|---|---|
-| contracts | yes | yes | — | M0 (data shape fixed) |
-| unit | partial | yes | — | M1 (algorithm implementation) |
+| contracts | yes | rest_contract | — | M0 + M2 (REST routes) |
+| unit | yes | — | — | M1 (algorithm implementation) |
 | e2e | — | yes | yes | M2-M4 (pipeline implementation) |
 
 Run locally:

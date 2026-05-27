@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Mypy / Ruff
+.mypy_cache/
+.ruff_cache/
+
+# Pre-commit
+.pre-commit-cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Project-specific
+data/
+logs/
+corpus/*.npy
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db

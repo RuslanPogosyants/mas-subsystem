@@ -60,11 +60,17 @@ class AgentBase(ABC):
             await self._bus.ack(self._channel, self._group, entry_id)
 
     async def _safe_handle(self, message: Message) -> Message | None:
+        """Handle a message; convert *adapter-side* failures into refuse replies.
+
+        Programming errors (AttributeError, TypeError, ValueError from validators)
+        propagate to the outer run() loop and surface in logs — they must not be
+        masked as a normal refuse.
+        """
         try:
             return await self.handle(message)
-        except Exception as error:
-            logger.exception(f"agent {self.name} handler error: {error}")
-            return self._refuse(message, reason=f"handler error: {error.__class__.__name__}")
+        except (OSError, ConnectionError, TimeoutError, RuntimeError) as error:
+            logger.exception(f"agent {self.name} adapter error: {error}")
+            return self._refuse(message, reason=f"adapter error: {error.__class__.__name__}")
 
     def _inform(self, request: Message, *, content: dict[str, object]) -> Message:
         return make_message(

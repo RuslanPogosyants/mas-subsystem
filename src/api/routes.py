@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
 
@@ -18,9 +18,11 @@ if TYPE_CHECKING:
 
 router = APIRouter(prefix="/api")
 
-UPLOAD_ROOT = Path("data/uploads")
-ALLOWED_AUDIO_SUFFIXES = (".mp3", ".wav", ".m4a", ".flac", ".ogg")
-ALLOWED_IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff")
+UPLOAD_ROOT: Final[Path] = Path("data/uploads")
+ALLOWED_AUDIO_SUFFIXES: Final[tuple[str, ...]] = (".mp3", ".wav", ".m4a", ".flac", ".ogg")
+ALLOWED_IMAGE_SUFFIXES: Final[tuple[str, ...]] = (".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff")
+MAX_UPLOAD_BYTES: Final[int] = 200 * 1024 * 1024
+UPLOAD_CHUNK_BYTES: Final[int] = 1 << 20
 
 
 def _detect_document_type(upload: UploadFile) -> DocumentType:
@@ -36,11 +38,39 @@ def _detect_document_type(upload: UploadFile) -> DocumentType:
     return DocumentType.TEXT
 
 
+def _safe_destination(task_dir: Path, original_name: str | None, index: int) -> Path:
+    """Build a destination path inside `task_dir`, rejecting path-traversal attempts."""
+    candidate = original_name or f"file-{index}"
+    base_name = Path(candidate).name
+    if not base_name or base_name in (".", ".."):
+        base_name = f"file-{index}"
+    destination = task_dir / f"{index:02d}-{base_name}"
+    resolved_root = task_dir.resolve()
+    if not destination.resolve().is_relative_to(resolved_root):
+        raise HTTPException(status_code=400, detail="invalid filename")
+    return destination
+
+
+def _write_chunk(handle: Any, chunk: bytes) -> None:
+    handle.write(chunk)
+
+
 async def _save_upload(upload: UploadFile, destination: Path) -> None:
-    """Stream the upload to disk."""
+    """Stream the upload to disk; enforces MAX_UPLOAD_BYTES, file I/O off-loop."""
     destination.parent.mkdir(parents=True, exist_ok=True)
-    contents = await upload.read()
-    destination.write_bytes(contents)
+    bytes_written = 0
+    handle = await asyncio.to_thread(destination.open, "wb")
+    try:
+        while True:
+            chunk = await upload.read(UPLOAD_CHUNK_BYTES)
+            if not chunk:
+                break
+            bytes_written += len(chunk)
+            if bytes_written > MAX_UPLOAD_BYTES:
+                raise HTTPException(status_code=413, detail="file exceeds size limit")
+            await asyncio.to_thread(_write_chunk, handle, chunk)
+    finally:
+        await asyncio.to_thread(handle.close)
 
 
 @router.post("/tasks", status_code=status.HTTP_202_ACCEPTED)
@@ -67,8 +97,7 @@ async def create_task(
         document_repo = DocumentRepo(session)
         await task_repo.create(task_id=task_id, requested_outputs=operations)
         for index, upload in enumerate(files):
-            safe_name = (upload.filename or f"file-{index}").replace("/", "_")
-            destination = task_dir / f"{index:02d}-{safe_name}"
+            destination = _safe_destination(task_dir, upload.filename, index)
             await _save_upload(upload, destination)
             document_type = _detect_document_type(upload)
             document_id = f"doc-{task_id}-{index}"

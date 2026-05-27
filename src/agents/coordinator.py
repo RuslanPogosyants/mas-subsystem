@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from loguru import logger
 
@@ -16,7 +16,14 @@ from src.core.bus import COORDINATOR_INBOX, channel_for_agent
 from src.core.idempotency import IdempotentReceiver
 from src.core.messages import Performative, make_message
 from src.core.retry import GLOBAL_DEADLINE_SEC
-from src.core.schemas import Operation, TaskStatus
+from src.core.schemas import (
+    FailedOperation,
+    Operation,
+    ResultArtifact,
+    ResultPayload,
+    ResultStats,
+    TaskStatus,
+)
 from src.core.status_fsm import determine_final_status
 from src.plan import OPERATION_TO_AGENT, build_plan
 
@@ -27,7 +34,7 @@ if TYPE_CHECKING:
     from src.plan import Plan, Subtask
 
 
-CoordinatorGroup = "coordinator"
+COORDINATOR_GROUP: Final[str] = "coordinator"
 
 
 class CoordinatorAgent:
@@ -47,7 +54,7 @@ class CoordinatorAgent:
 
     async def dispatch(self, task: Task) -> dict[str, object | None]:
         """Run the plan for `task` and return the per-subtask results map."""
-        await self._bus.ensure_group(COORDINATOR_INBOX, CoordinatorGroup)
+        await self._bus.ensure_group(COORDINATOR_INBOX, COORDINATOR_GROUP)
         plan = build_plan(task)
         await self._task_repo.update_status(task.id, TaskStatus.RUNNING)
         await self._task_repo.commit()
@@ -77,9 +84,9 @@ class CoordinatorAgent:
     ) -> None:
         while pending and time.monotonic() < deadline:
             found_any = False
-            async for entry_id, reply in self._bus.read(COORDINATOR_INBOX, CoordinatorGroup, count=10, block_ms=500):
+            async for entry_id, reply in self._bus.read(COORDINATOR_INBOX, COORDINATOR_GROUP, count=10, block_ms=500):
                 found_any = True
-                await self._bus.ack(COORDINATOR_INBOX, CoordinatorGroup, entry_id)
+                await self._bus.ack(COORDINATOR_INBOX, COORDINATOR_GROUP, entry_id)
                 if not self._idempotency.accept(reply.message_id):
                     continue
                 subtask_id = reply.subtask_id
@@ -134,6 +141,50 @@ class CoordinatorAgent:
         results: dict[str, object | None],
     ) -> None:
         status = determine_final_status(plan, results)
+        artifact = self._assemble_artifact(task, plan, results, status)
         await self._task_repo.update_status(task.id, status)
+        await self._task_repo.save_artifact(
+            task.id,
+            final_artifact=artifact.model_dump(mode="json"),
+            stats=artifact.stats.model_dump(mode="json"),
+        )
         await self._task_repo.commit()
         logger.info(f"task {task.id} finalised as {status.value}")
+
+    def _assemble_artifact(
+        self,
+        task: Task,
+        plan: Plan,
+        results: dict[str, object | None],
+        status: TaskStatus,
+    ) -> ResultArtifact:
+        """Build a ResultArtifact from per-subtask results plus failure stats."""
+        completed_operations = [subtask.operation for subtask in plan.subtasks if results.get(subtask.id) is not None]
+        degraded_operations = [
+            subtask.operation for subtask in plan.subtasks if not subtask.required and results.get(subtask.id) is None
+        ]
+        failed = [
+            FailedOperation(
+                op=subtask.operation,
+                agent=subtask.agent,
+                reason="no_reply",
+                retries=0,
+                elapsed_sec=0.0,
+            )
+            for subtask in plan.subtasks
+            if results.get(subtask.id) is None
+        ]
+        stats = ResultStats(
+            duration_sec=0.0,
+            agents_called=len(plan.subtasks),
+            messages_exchanged=len(results),
+            failed_operations=failed,
+        )
+        return ResultArtifact(
+            task_id=task.id,
+            status=status,
+            operations=completed_operations,
+            result=ResultPayload(),
+            degraded=degraded_operations,
+            stats=stats,
+        )

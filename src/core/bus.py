@@ -63,8 +63,8 @@ class RedisStreamBus:
     ) -> AsyncIterator[tuple[str, Message]]:
         """XREADGROUP one batch and yield (entry_id, message) pairs.
 
-        Caller is responsible for calling `ack(channel, group, entry_id)` after
-        the message has been processed successfully.
+        Async generator: caller iterates `async for ... in bus.read(...)`. After
+        a successful handle, the caller must call `ack(channel, group, entry_id)`.
         """
         response = await self._redis.xreadgroup(
             groupname=group,
@@ -84,6 +84,12 @@ class RedisStreamBus:
         await self._redis.xack(channel, group, entry_id)
 
     async def pending_count(self, channel: str, group: str) -> int:
-        """Number of XPENDING entries for the group; used by recovery."""
-        info = await self._redis.xpending(channel, group)
-        return int(info["pending"]) if isinstance(info, dict) else 0
+        """Number of XPENDING entries for the group; used by recovery.
+
+        The XPENDING summary form returns `[count, min_id, max_id, consumers]`
+        (a list), not a dict — see Redis docs. `count` is element 0.
+        """
+        summary = await self._redis.xpending(channel, group)
+        if not summary:
+            return 0
+        return int(summary[0])

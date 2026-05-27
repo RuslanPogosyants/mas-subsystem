@@ -46,12 +46,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
+        dispatch_tasks: set[asyncio.Task[None]] = app.state.dispatch_tasks
+        for dispatch in list(dispatch_tasks):
+            dispatch.cancel()
         for agent in agents:
             agent.shutdown()
         for task in tasks:
             task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
-            await asyncio.gather(*tasks, return_exceptions=False)
+            await asyncio.gather(*tasks, *dispatch_tasks, return_exceptions=False)
         await redis.aclose()
         await engine.dispose()
 

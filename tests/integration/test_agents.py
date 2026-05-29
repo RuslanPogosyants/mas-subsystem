@@ -8,10 +8,12 @@ import contextlib
 import pytest
 from redis.asyncio import Redis
 from src.adapters.llm import FakeLlmAdapter
+from src.adapters.ner import FakeNerAdapter, TermCandidate
 from src.adapters.ocr import FakeOcrAdapter
 from src.adapters.transcriber import FakeTranscriberAdapter
 from src.agents.ocr import OcrAgent
 from src.agents.summarizer import SummarizerAgent
+from src.agents.terminology import TerminologyAgent
 from src.agents.test_generator import TestGeneratorAgent
 from src.agents.transcriber import TranscriberAgent
 from src.core.bus import COORDINATOR_INBOX, RedisStreamBus
@@ -20,7 +22,7 @@ from src.core.schemas import Summary
 
 
 async def _run_agent_until_replied(
-    agent: TranscriberAgent | OcrAgent | SummarizerAgent | TestGeneratorAgent,
+    agent: TranscriberAgent | OcrAgent | SummarizerAgent | TestGeneratorAgent | TerminologyAgent,
     bus: RedisStreamBus,
     request: Message,
     *,
@@ -210,5 +212,31 @@ class TestTestGeneratorAgentRoundTrip:
             assert reply.performative == Performative.INFORM
             assert reply.subtask_id == "st-task-q1-F4"
             assert reply.content["questions"][0]["type"] == "single_choice"
+        finally:
+            await redis.aclose()
+
+
+@pytest.mark.integration
+class TestTerminologyAgentRoundTrip:
+    async def test_terminology_replies_inform_with_terms(self, clean_redis: str) -> None:
+        redis = Redis.from_url(clean_redis, decode_responses=True)
+        try:
+            bus = RedisStreamBus(redis)
+            ner = FakeNerAdapter(candidates=[TermCandidate(text="граф", lemma="граф", label="MISC")])
+            agent = TerminologyAgent(bus=bus, ner=ner, stopwords=set(), domain_categories={})
+            request = make_message(
+                performative=Performative.REQUEST,
+                sender="CoordinatorAgent",
+                receiver=agent.name,
+                task_id="task-t1",
+                conversation_id="conv-t1",
+                content={"chunks": [{"id": "c1", "content": "граф"}], "top_n": 5},
+                subtask_id="st-task-t1-F5",
+            )
+            reply = await _run_agent_until_replied(agent, bus, request, channel="agent.terminology")
+            assert reply.performative == Performative.INFORM
+            assert reply.subtask_id == "st-task-t1-F5"
+            assert reply.content["terms"][0]["lemma"] == "граф"
+            assert reply.content["terms"][0]["category"] == "MISC"
         finally:
             await redis.aclose()

@@ -153,3 +153,14 @@ def test_agent_class_names_cover_all_agents() -> None:
         assert agent in AGENT_CLASS_NAMES
     assert AGENT_CLASS_NAMES["recommender"] == "RecommenderAgent"
     assert AGENT_CLASS_NAMES["ocr"] == "OCRAgent"
+
+
+def test_summarizer_and_terminology_use_any_join() -> None:
+    task = _make_task(list(Operation), with_audio=True, with_pdf=True)
+    plan = build_plan(task)
+    join_by_op = {subtask.operation: subtask.join for subtask in plan.subtasks}
+    assert join_by_op[Operation.F3_SUMMARIZE] == "any"
+    assert join_by_op[Operation.F5_TERMS] == "any"
+    assert join_by_op[Operation.F1_TRANSCRIBE] == "all"
+    assert join_by_op[Operation.F4_TEST] == "all"
+    assert join_by_op[Operation.F6_RECOMMEND] == "all"

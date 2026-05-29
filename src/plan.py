@@ -14,6 +14,8 @@ from src.core.schemas import DocumentType, Operation, Task
 
 AgentName = Literal["transcriber", "ocr", "summarizer", "test_generator", "terminology", "recommender"]
 
+JoinPolicy = Literal["all", "any"]
+
 REQUIRED_AGENTS: frozenset[AgentName] = frozenset({"transcriber", "ocr"})
 OPTIONAL_AGENTS: frozenset[AgentName] = frozenset({"summarizer", "test_generator", "terminology", "recommender"})
 
@@ -25,6 +27,10 @@ OPERATION_TO_AGENT: dict[Operation, AgentName] = {
     Operation.F5_TERMS: "terminology",
     Operation.F6_RECOMMEND: "recommender",
 }
+
+# Operations whose parents are alternative chunk SOURCES (F1 audio / F2 OCR):
+# run on whichever upstream succeeded. Everything else needs all parents.
+ANY_JOIN_OPERATIONS: Final[frozenset[Operation]] = frozenset({Operation.F3_SUMMARIZE, Operation.F5_TERMS})
 
 
 class Subtask(BaseModel):
@@ -38,6 +44,7 @@ class Subtask(BaseModel):
     payload: dict[str, object] = Field(default_factory=dict)
     depends_on: list[str] = Field(default_factory=list)
     required: bool
+    join: JoinPolicy = "all"
 
 
 class Plan(BaseModel):
@@ -145,6 +152,7 @@ def build_plan(task: Task) -> Plan:
             operation=operation,
             depends_on=_dependencies(operation, eligible_set, task.id),
             required=OPERATION_TO_AGENT[operation] in REQUIRED_AGENTS,
+            join="any" if operation in ANY_JOIN_OPERATIONS else "all",
         )
         for operation in eligible
     ]

@@ -29,6 +29,7 @@ repos:
           - "asyncpg>=0.30"
           - "fastapi>=0.115"
           - "redis>=5.2"
+          - "httpx>=0.27"
           - "loguru>=0.7"
         args: [--config-file=pyproject.toml]
         files: ^src/

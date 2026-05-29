@@ -57,6 +57,8 @@ class TaskState:
     first_attempt_at: dict[str, float] = field(default_factory=dict)
     resolved_at: dict[str, float] = field(default_factory=dict)
     fail_reason: dict[str, str] = field(default_factory=dict)
+    # Counts REQUESTs published (including retries) plus replies routed
+    # (including refuses) — not request/response pairs.
     messages_exchanged: int = 0
 
 
@@ -83,6 +85,7 @@ class Coordinator:
         self._shutdown = asyncio.Event()
 
     def shutdown(self) -> None:
+        """Signal the run loop to stop after the current tick."""
         self._shutdown.set()
 
     async def run(self) -> None:
@@ -135,8 +138,12 @@ class Coordinator:
                 state = self._tasks.get(task_id)
                 if state is None:
                     continue
-                await self._advance(state, now)
-                await self._maybe_finalize(task_id, state, now)
+                try:
+                    await self._advance(state, now)
+                    await self._maybe_finalize(task_id, state, now)
+                except Exception as error:
+                    logger.exception(f"coordinator abandoning task {task_id}: {error}")
+                    await self._abandon(task_id)
 
     def _route_reply(self, state: TaskState, reply: Message, now: float) -> None:
         subtask_id = reply.subtask_id
@@ -225,6 +232,11 @@ class Coordinator:
         state.first_attempt_at.setdefault(subtask.id, now)
 
     def _timeout_for(self, agent: str) -> float:
+        """Return the deadline for one agent request.
+
+        Uses the injected per-agent override first; falls back to the global
+        AGENT_TIMEOUTS_SEC default for that agent.
+        """
         return self._timeouts.get(agent, AGENT_TIMEOUTS_SEC[agent])
 
     async def _maybe_finalize(self, task_id: str, state: TaskState, now: float) -> None:
@@ -232,6 +244,19 @@ class Coordinator:
             return
         await self._finalize(state, now)
         self._tasks.pop(task_id, None)
+
+    async def _abandon(self, task_id: str) -> None:
+        """Drop a task whose processing raised; best-effort mark it failed.
+
+        A single task that throws during advance/finalize (e.g. a malformed agent
+        payload that fails validation) must never wedge the run loop or starve
+        sibling tasks. The task is removed and, where possible, persisted as failed.
+        """
+        self._tasks.pop(task_id, None)
+        try:
+            await self._store.set_status(task_id, TaskStatus.FAILED)
+        except Exception as error:
+            logger.exception(f"coordinator could not mark {task_id} failed: {error}")
 
     async def _finalize(self, state: TaskState, now: float) -> None:
         status = determine_final_status(state.plan, state.results)

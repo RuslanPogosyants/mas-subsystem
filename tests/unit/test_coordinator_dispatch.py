@@ -183,3 +183,23 @@ async def test_concurrent_tasks_do_not_steal_replies() -> None:
     await coordinator._tick()
     assert store.status["task-A"] == "completed"
     assert store.status["task-B"] == "completed"
+
+
+async def test_finalize_error_does_not_wedge_loop_or_starve_siblings() -> None:
+    bus, store, clock = FakeBus(), FakeTaskStore(), Clock()
+    coordinator = _coordinator(bus, store, clock)
+    # Poison task: F3 will return content that fails Summary validation at finalize.
+    await coordinator.submit(_task("task-poison", [Operation.F1_TRANSCRIBE, Operation.F3_SUMMARIZE], pdf=False))
+    # Healthy sibling task: F1 only.
+    await coordinator.submit(_task("task-ok", [Operation.F1_TRANSCRIBE], pdf=False))
+    for request in bus.requests_for(channel_for_agent("transcriber")):
+        bus.feed_inbox(_inform(request, {"chunks": []}))
+    await coordinator._tick()  # resolves both F1s; task-ok completes; poison publishes F3
+    assert store.status["task-ok"] == "completed"
+    f3_request = bus.requests_for(channel_for_agent("summarizer"))[0]
+    bus.feed_inbox(_inform(f3_request, {"not_a_summary": True}))  # fails Summary validation
+    await coordinator._tick()  # must NOT raise; poison task abandoned, loop survives
+    assert store.status["task-poison"] == "failed"
+    assert "task-poison" not in coordinator._tasks
+    # A further tick is stable (loop not wedged).
+    await coordinator._tick()

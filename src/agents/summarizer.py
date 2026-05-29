@@ -3,19 +3,19 @@
 Map-reduce: if the concatenated chunk text fits in one block, summarise in a
 single LLM call; otherwise summarise each overlapping block and reduce the
 partials into one final summary. The LLM returns raw JSON
-{introduction, key_points, conclusions}; the agent validates it, retries up to
-twice on malformed output, then maps it to the schemas.Summary vocabulary
+{introduction, key_points, conclusions}; the agent validates it (via the shared
+parse_with_retry helper), then maps it to the schemas.Summary vocabulary
 (key_points -> thesis section) and echoes the source chunk ids. Empty input
 chunks are refused, never silently summarised into nothing.
 """
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING, Final
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
+from src.agents._llm_json import parse_with_retry
 from src.agents.base import AgentBase
 from src.core.schemas import Operation, Summary, SummarySection
 
@@ -78,14 +78,14 @@ class SummarizerAgent(AgentBase):
 
     async def _summarize(self, text: str) -> _RawSummary | None:
         if len(text) <= self._block_chars:
-            return await self._call_json(text)
+            return await self._call(text)
         partials: list[_RawSummary] = []
         for block in self._split(text):
-            partial = await self._call_json(block)
+            partial = await self._call(block)
             if partial is None:
                 return None
             partials.append(partial)
-        return await self._call_json(self._reduce_prompt(partials))
+        return await self._call(self._reduce_prompt(partials))
 
     def _split(self, text: str) -> list[str]:
         step = max(1, self._block_chars - self._overlap)
@@ -97,26 +97,7 @@ class SummarizerAgent(AgentBase):
         )
         return f"Объедини частичные саммари в одно итоговое саммари:\n{joined}"
 
-    async def _call_json(self, user: str) -> _RawSummary | None:
-        prompt = user
-        for _ in range(_MAX_PARSE_RETRIES + 1):
-            response = await self._llm.complete(system=_SYSTEM_PROMPT, user=prompt)
-            parsed = _parse_raw_summary(response)
-            if parsed is not None:
-                return parsed
-            prompt = (
-                f"{user}\n\nПредыдущий ответ не был валидным JSON с ключами "
-                "introduction, key_points, conclusions. Верни строго такой JSON."
-            )
-        return None
-
-
-def _parse_raw_summary(response: str) -> _RawSummary | None:
-    try:
-        data = json.loads(response)
-    except (json.JSONDecodeError, TypeError):
-        return None
-    try:
-        return _RawSummary.model_validate(data)
-    except ValidationError:
-        return None
+    async def _call(self, user: str) -> _RawSummary | None:
+        return await parse_with_retry(
+            self._llm, system=_SYSTEM_PROMPT, user=user, model_cls=_RawSummary, retries=_MAX_PARSE_RETRIES
+        )

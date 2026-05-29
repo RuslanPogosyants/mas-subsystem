@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from src.agents.base import AgentBase
+from src.core.schemas import Operation
 
 if TYPE_CHECKING:
     from src.adapters.ocr import OcrAdapter
@@ -16,7 +17,12 @@ class OcrAgent(AgentBase):
     name = "OCRAgent"
 
     def __init__(self, *, bus: RedisStreamBus, ocr: OcrAdapter) -> None:
-        super().__init__(bus=bus, channel="agent.ocr", group="worker-ocr")
+        super().__init__(
+            bus=bus,
+            channel="agent.ocr",
+            group="worker-ocr",
+            operation=Operation.F2_OCR,
+        )
         self._ocr = ocr
 
     async def handle(self, message: Message) -> Message | None:

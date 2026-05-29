@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from loguru import logger
 
@@ -14,6 +15,9 @@ from src.core.messages import Message, Performative, make_message
 
 if TYPE_CHECKING:
     from src.core.bus import RedisStreamBus
+    from src.core.schemas import Operation
+
+_HANG_SECONDS: Final[float] = 86_400.0
 
 
 class AgentBase(ABC):
@@ -26,10 +30,11 @@ class AgentBase(ABC):
 
     name: str
 
-    def __init__(self, *, bus: RedisStreamBus, channel: str, group: str) -> None:
+    def __init__(self, *, bus: RedisStreamBus, channel: str, group: str, operation: Operation) -> None:
         self._bus = bus
         self._channel = channel
         self._group = group
+        self._operation = operation
         self._idempotency = IdempotentReceiver()
         self._shutdown = asyncio.Event()
 
@@ -60,17 +65,25 @@ class AgentBase(ABC):
             await self._bus.ack(self._channel, self._group, entry_id)
 
     async def _safe_handle(self, message: Message) -> Message | None:
-        """Handle a message; convert *adapter-side* failures into refuse replies.
+        """Handle a message; honour resilience flags; convert adapter failures to refuse.
 
-        Programming errors (AttributeError, TypeError, ValueError from validators)
-        propagate to the outer run() loop and surface in logs — they must not be
-        masked as a normal refuse.
+        Resilience flags FORCE_REFUSE / HANG_AGENT (env, value is an op code like
+        "F6") are read fresh per message so tests may set them after construction.
+        Programming errors (AttributeError, TypeError, ValueError) propagate to the
+        outer run() loop and surface in logs — they must not be masked as refuse.
         """
+        if self._is_flagged("FORCE_REFUSE"):
+            return self._refuse(message, reason="force_refuse flag enabled")
+        if self._is_flagged("HANG_AGENT"):
+            await asyncio.sleep(_HANG_SECONDS)
         try:
             return await self.handle(message)
         except (OSError, ConnectionError, TimeoutError, RuntimeError) as error:
             logger.exception(f"agent {self.name} adapter error: {error}")
             return self._refuse(message, reason=f"adapter error: {error.__class__.__name__}")
+
+    def _is_flagged(self, env_var: str) -> bool:
+        return os.environ.get(env_var, "") == self._operation.value
 
     def _inform(self, request: Message, *, content: dict[str, object]) -> Message:
         return make_message(

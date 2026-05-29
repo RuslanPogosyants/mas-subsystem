@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from src.agents.base import AgentBase
+from src.core.schemas import Operation
 
 if TYPE_CHECKING:
     from src.adapters.transcriber import TranscriberAdapter
@@ -16,7 +17,12 @@ class TranscriberAgent(AgentBase):
     name = "TranscriberAgent"
 
     def __init__(self, *, bus: RedisStreamBus, transcriber: TranscriberAdapter) -> None:
-        super().__init__(bus=bus, channel="agent.transcriber", group="worker-transcriber")
+        super().__init__(
+            bus=bus,
+            channel="agent.transcriber",
+            group="worker-transcriber",
+            operation=Operation.F1_TRANSCRIBE,
+        )
         self._transcriber = transcriber
 
     async def handle(self, message: Message) -> Message | None:

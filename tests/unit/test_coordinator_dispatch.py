@@ -266,3 +266,36 @@ async def test_summarizer_skipped_when_all_parents_fail() -> None:
     assert bus.requests_for(channel_for_agent("summarizer")) == [], "F3 must be skipped when no chunks exist"
     # F1/F2 are both required and both failed -> task failed (see status FSM, unchanged).
     assert store.artifacts["task-1"]["status"] == "failed"
+
+
+async def test_recommender_skipped_when_one_parent_fails_under_all_join() -> None:
+    # F6 (join="all") needs both F3 and F5; F5 fails -> F6 must be skipped, not run on F3 alone.
+    bus, store, clock = FakeBus(), FakeTaskStore(), Clock()
+    coordinator = _coordinator(bus, store, clock)
+    await coordinator.submit(
+        _task(
+            "task-1",
+            [Operation.F1_TRANSCRIBE, Operation.F3_SUMMARIZE, Operation.F5_TERMS, Operation.F6_RECOMMEND],
+            pdf=False,
+        )
+    )
+    f1_request = bus.requests_for(channel_for_agent("transcriber"))[0]
+    bus.feed_inbox(_inform(f1_request, {"chunks": [{"id": "c1", "content": "x"}]}))
+    await coordinator._tick()  # F1 resolves -> F3 and F5 publish (join="any" on the audio chunks)
+    f3_request = bus.requests_for(channel_for_agent("summarizer"))[0]
+    bus.feed_inbox(_inform(f3_request, {"summary_id": "s1", "sections": [], "source_chunk_ids": []}))
+    refused: set[str] = set()
+    for _ in range(10):
+        for request in bus.requests_for(channel_for_agent("terminology")):
+            if request.message_id not in refused:
+                refused.add(request.message_id)
+                bus.feed_inbox(_refuse(request, "terms down"))
+        await coordinator._tick()
+        clock.advance(6.0)
+        if "task-1" in store.artifacts:
+            break
+    assert bus.requests_for(channel_for_agent("recommender")) == [], "F6 must be skipped when F5 failed (join=all)"
+    artifact = store.artifacts["task-1"]
+    assert artifact["status"] == "partial_ready"
+    failed_ops = {failure["op"] for failure in artifact["stats"]["failed_operations"]}
+    assert {"F5", "F6"} <= failed_ops

@@ -17,6 +17,7 @@ from src.agents.coordinator import Coordinator
 from src.agents.ocr import OcrAgent
 from src.agents.store import DbTaskStore
 from src.agents.summarizer import SummarizerAgent
+from src.agents.test_generator import TestGeneratorAgent
 from src.agents.transcriber import TranscriberAgent
 from src.api.routes import router as api_router
 from src.config import get_settings
@@ -77,7 +78,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         block_chars=settings.summarizer_block_chars,
         overlap=settings.summarizer_overlap,
     )
-    agents = [transcriber_agent, ocr_agent, summarizer_agent]
+    test_generator_agent = TestGeneratorAgent(bus=bus, llm=FakeLlmAdapter())
+    agents = [transcriber_agent, ocr_agent, summarizer_agent, test_generator_agent]
     coordinator = Coordinator(
         bus=bus,
         store=DbTaskStore(session_factory),

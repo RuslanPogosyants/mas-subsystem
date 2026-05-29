@@ -169,7 +169,10 @@ class Coordinator:
                     continue
                 if not all(dep in state.results for dep in subtask.depends_on):
                     continue
-                if any(state.results.get(dep) is None for dep in subtask.depends_on):
+                succeeded = [dep for dep in subtask.depends_on if state.results.get(dep) is not None]
+                if subtask.depends_on and not succeeded:
+                    self._fail_subtask(state, subtask.id, "skipped: all upstream failed", now)
+                elif subtask.join == "all" and len(succeeded) < len(subtask.depends_on):
                     self._fail_subtask(state, subtask.id, "skipped: upstream failed", now)
                 else:
                     await self._publish(state, subtask, now)

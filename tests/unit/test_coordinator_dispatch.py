@@ -299,3 +299,29 @@ async def test_recommender_skipped_when_one_parent_fails_under_all_join() -> Non
     assert artifact["status"] == "partial_ready"
     failed_ops = {failure["op"] for failure in artifact["stats"]["failed_operations"]}
     assert {"F5", "F6"} <= failed_ops
+
+
+async def test_text_only_summary_task_does_not_complete_when_agent_refuses_empty() -> None:
+    # A TEXT-only F3 task has no F1/F2 ingestion; F3 publishes with empty chunks.
+    # If the agent refuses (empty input), the task must NOT be reported completed.
+    bus, store, clock = FakeBus(), FakeTaskStore(), Clock()
+    coordinator = _coordinator(bus, store, clock)
+    task = Task(
+        id="task-1",
+        status=TaskStatus.PLANNING,
+        requested_outputs=[Operation.F3_SUMMARIZE],
+        conversation_id="conv-1",
+        documents=[Document(id="d-t", task_id="task-1", document_type=DocumentType.TEXT, file_path="/x.txt")],
+    )
+    await coordinator.submit(task)
+    refused: set[str] = set()
+    for _ in range(10):
+        for request in bus.requests_for(channel_for_agent("summarizer")):
+            if request.message_id not in refused:
+                refused.add(request.message_id)
+                bus.feed_inbox(_refuse(request, "no chunk content to summarize"))
+        await coordinator._tick()
+        clock.advance(6.0)
+        if "task-1" in store.artifacts:
+            break
+    assert store.artifacts["task-1"]["status"] != "completed"

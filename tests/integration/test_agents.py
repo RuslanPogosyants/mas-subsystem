@@ -7,16 +7,19 @@ import contextlib
 
 import pytest
 from redis.asyncio import Redis
+from src.adapters.llm import FakeLlmAdapter
 from src.adapters.ocr import FakeOcrAdapter
 from src.adapters.transcriber import FakeTranscriberAdapter
 from src.agents.ocr import OcrAgent
+from src.agents.summarizer import SummarizerAgent
 from src.agents.transcriber import TranscriberAgent
 from src.core.bus import COORDINATOR_INBOX, RedisStreamBus
 from src.core.messages import Message, Performative, make_message
+from src.core.schemas import Summary
 
 
 async def _run_agent_until_replied(
-    agent: TranscriberAgent | OcrAgent,
+    agent: TranscriberAgent | OcrAgent | SummarizerAgent,
     bus: RedisStreamBus,
     request: Message,
     *,
@@ -127,5 +130,49 @@ class TestOcrAgentRoundTrip:
             reply = await _run_agent_until_replied(agent, bus, request, channel="agent.ocr")
             assert reply.performative == Performative.REFUSE
             assert "pdf or image" in reply.content["reason"]
+        finally:
+            await redis.aclose()
+
+
+@pytest.mark.integration
+class TestSummarizerAgentRoundTrip:
+    async def test_summarizer_replies_inform_with_summary(self, clean_redis: str) -> None:
+        redis = Redis.from_url(clean_redis, decode_responses=True)
+        try:
+            bus = RedisStreamBus(redis)
+            agent = SummarizerAgent(bus=bus, llm=FakeLlmAdapter())
+            request = make_message(
+                performative=Performative.REQUEST,
+                sender="CoordinatorAgent",
+                receiver=agent.name,
+                task_id="task-s1",
+                conversation_id="conv-s1",
+                content={"chunks": [{"id": "c1", "content": "лекция про графы"}]},
+                subtask_id="st-task-s1-F3",
+            )
+            reply = await _run_agent_until_replied(agent, bus, request, channel="agent.summarizer")
+            assert reply.performative == Performative.INFORM
+            assert reply.subtask_id == "st-task-s1-F3"
+            summary = Summary.model_validate(reply.content)
+            assert summary.source_chunk_ids == ["c1"]
+        finally:
+            await redis.aclose()
+
+    async def test_summarizer_refuses_on_empty_chunks(self, clean_redis: str) -> None:
+        redis = Redis.from_url(clean_redis, decode_responses=True)
+        try:
+            bus = RedisStreamBus(redis)
+            agent = SummarizerAgent(bus=bus, llm=FakeLlmAdapter())
+            request = make_message(
+                performative=Performative.REQUEST,
+                sender="CoordinatorAgent",
+                receiver=agent.name,
+                task_id="task-s2",
+                conversation_id="conv-s2",
+                content={"chunks": []},
+                subtask_id="st-task-s2-F3",
+            )
+            reply = await _run_agent_until_replied(agent, bus, request, channel="agent.summarizer")
+            assert reply.performative == Performative.REFUSE
         finally:
             await redis.aclose()

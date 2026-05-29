@@ -59,7 +59,6 @@ class Plan(BaseModel):
 
     task_id: str
     subtasks: list[Subtask]
-    max_total_timeout_sec: float = 1800.0
 
     def _by_id(self) -> dict[str, Subtask]:
         return {subtask.id: subtask for subtask in self.subtasks}
@@ -70,24 +69,6 @@ class Plan(BaseModel):
         if subtask_id not in index:
             raise KeyError(f"unknown subtask id: {subtask_id!r}")
         return index[subtask_id]
-
-    def is_required(self, subtask_id: str) -> bool:
-        return self.get(subtask_id).required
-
-    def is_optional(self, subtask_id: str) -> bool:
-        return not self.is_required(subtask_id)
-
-    def stage1(self) -> list[Subtask]:
-        """Subtasks with no upstream dependencies (executed first)."""
-        return [subtask for subtask in self.subtasks if not subtask.depends_on]
-
-    def stage2(self) -> list[Subtask]:
-        """Subtasks that wait for stage 1 results."""
-        return [subtask for subtask in self.subtasks if subtask.depends_on]
-
-    def all_stage1_done(self, results: dict[str, object | None]) -> bool:
-        """True when every stage-1 subtask has a result (success or refuse)."""
-        return all(subtask.id in results for subtask in self.stage1())
 
 
 DEPENDENCY_MAP: Final[dict[Operation, tuple[Operation, ...]]] = {
@@ -136,12 +117,12 @@ def build_plan(task: Task) -> Plan:
     """Build a Plan from a Task.
 
     F1 / F2 emit subtasks only when matching documents are attached. Optional
-    operations (F3-F6) emit unconditionally; F4 depends on F3 and F6 on F5,
+    operations (F3-F6) emit unconditionally. F3/F5 run on whichever of F1/F2
+    is available (join="any"); F4 depends on F3; F6 on F3 and F5 — each only
     when those upstream subtasks are also in the plan.
 
-    Note: in M1 every Subtask is built with an empty `payload`. The Coordinator
-    dispatch loop (M2) will inject the per-agent input (file_path for F1/F2,
-    upstream Summary/Terms for F4/F6) at publish time.
+    Subtask payloads stay empty here; the Coordinator builds the per-agent input
+    at publish time via build_payload.
     """
     eligible = _eligible_operations(task)
     eligible_set = set(eligible)

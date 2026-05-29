@@ -83,9 +83,20 @@ class Plan(BaseModel):
         return all(subtask.id in results for subtask in self.stage1())
 
 
-DEPENDENCY_MAP: Final[dict[Operation, Operation]] = {
-    Operation.F4_TEST: Operation.F3_SUMMARIZE,
-    Operation.F6_RECOMMEND: Operation.F5_TERMS,
+DEPENDENCY_MAP: Final[dict[Operation, tuple[Operation, ...]]] = {
+    Operation.F3_SUMMARIZE: (Operation.F1_TRANSCRIBE, Operation.F2_OCR),
+    Operation.F5_TERMS: (Operation.F1_TRANSCRIBE, Operation.F2_OCR),
+    Operation.F4_TEST: (Operation.F3_SUMMARIZE,),
+    Operation.F6_RECOMMEND: (Operation.F3_SUMMARIZE, Operation.F5_TERMS),
+}
+
+AGENT_CLASS_NAMES: Final[dict[AgentName, str]] = {
+    "transcriber": "TranscriberAgent",
+    "ocr": "OCRAgent",
+    "summarizer": "SummarizerAgent",
+    "test_generator": "TestGeneratorAgent",
+    "terminology": "TerminologyAgent",
+    "recommender": "RecommenderAgent",
 }
 
 
@@ -109,11 +120,9 @@ def _eligible_operations(task: Task) -> list[Operation]:
 
 
 def _dependencies(operation: Operation, eligible: set[Operation], task_id: str) -> list[str]:
-    """Return the depends_on list for `operation`, filtered to eligible operations."""
-    upstream = DEPENDENCY_MAP.get(operation)
-    if upstream is None or upstream not in eligible:
-        return []
-    return [subtask_id_for(task_id, upstream)]
+    """Return depends_on ids for `operation`, filtered to upstream ops in the plan."""
+    upstreams = DEPENDENCY_MAP.get(operation, ())
+    return [subtask_id_for(task_id, upstream) for upstream in upstreams if upstream in eligible]
 
 
 def build_plan(task: Task) -> Plan:

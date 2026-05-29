@@ -112,3 +112,44 @@ def test_plan_subtask_id_unique() -> None:
 def test_operation_to_agent_total() -> None:
     for op in Operation:
         assert op in OPERATION_TO_AGENT
+
+
+def test_plan_summarizer_depends_on_present_roots() -> None:
+    task = _make_task([Operation.F1_TRANSCRIBE, Operation.F3_SUMMARIZE], with_audio=True, with_pdf=True)
+    plan = build_plan(task)
+    summarize = next(s for s in plan.subtasks if s.operation == Operation.F3_SUMMARIZE)
+    transcribe = next(s for s in plan.subtasks if s.operation == Operation.F1_TRANSCRIBE)
+    assert transcribe.id in summarize.depends_on
+
+
+def test_plan_recommender_depends_on_summarizer_and_terminology() -> None:
+    task = _make_task(
+        [Operation.F3_SUMMARIZE, Operation.F5_TERMS, Operation.F6_RECOMMEND],
+        with_audio=True,
+        with_pdf=False,
+    )
+    plan = build_plan(task)
+    recommend = next(s for s in plan.subtasks if s.operation == Operation.F6_RECOMMEND)
+    summarize = next(s for s in plan.subtasks if s.operation == Operation.F3_SUMMARIZE)
+    terms = next(s for s in plan.subtasks if s.operation == Operation.F5_TERMS)
+    assert summarize.id in recommend.depends_on
+    assert terms.id in recommend.depends_on
+
+
+def test_plan_dependencies_filtered_to_eligible_only() -> None:
+    # F2 not requested -> summarizer must not depend on an OCR subtask that doesn't exist.
+    task = _make_task([Operation.F1_TRANSCRIBE, Operation.F3_SUMMARIZE], with_audio=True, with_pdf=False)
+    plan = build_plan(task)
+    summarize = next(s for s in plan.subtasks if s.operation == Operation.F3_SUMMARIZE)
+    plan_ids = {s.id for s in plan.subtasks}
+    assert set(summarize.depends_on) <= plan_ids
+    assert len(summarize.depends_on) == 1  # only F1
+
+
+def test_agent_class_names_cover_all_agents() -> None:
+    from src.plan import AGENT_CLASS_NAMES
+
+    for agent in OPERATION_TO_AGENT.values():
+        assert agent in AGENT_CLASS_NAMES
+    assert AGENT_CLASS_NAMES["recommender"] == "RecommenderAgent"
+    assert AGENT_CLASS_NAMES["ocr"] == "OCRAgent"

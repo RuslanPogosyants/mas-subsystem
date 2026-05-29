@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import httpx
+
 if TYPE_CHECKING:
     from src.config import Settings
 
@@ -24,7 +26,7 @@ class GigaChatAdapter:
             credentials=settings.gigachat_credentials,
             scope=settings.gigachat_scope,
             model=settings.gigachat_model,
-            verify_ssl_certs=False,
+            verify_ssl_certs=settings.gigachat_verify_ssl,
         )
         self._temperature = settings.gigachat_temperature
 
@@ -38,5 +40,10 @@ class GigaChatAdapter:
             ],
             temperature=self._temperature,
         )
-        response = await self._client.achat(chat)
+        # Normalise transport/HTTP failures into a ConnectionError so AgentBase
+        # converts them to a refuse instead of crashing the agent loop.
+        try:
+            response = await self._client.achat(chat)
+        except httpx.HTTPError as error:
+            raise ConnectionError(f"gigachat request failed: {error}") from error
         return str(response.choices[0].message.content)

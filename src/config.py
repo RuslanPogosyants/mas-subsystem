@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     gigachat_scope: str = "GIGACHAT_API_PERS"
     gigachat_model: str = "GigaChat-Pro"
     gigachat_temperature: float = 0.3
+    # Sber's GigaChat endpoint uses a Russian CA absent from default trust stores;
+    # verification is off by default for the demo and can be enabled in production.
+    gigachat_verify_ssl: bool = False
     summarizer_block_chars: int = 6000
     summarizer_overlap: int = 500
 

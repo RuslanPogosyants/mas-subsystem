@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from src.agents.payloads import build_payload
 from src.core.schemas import Document, DocumentType, Operation, Task, TaskStatus
 from src.plan import build_plan, subtask_id_for
@@ -64,3 +66,44 @@ def test_recommender_payload_uses_summary_and_terms() -> None:
     assert payload["summary"] == {"summary_id": "s1", "sections": []}
     assert payload["terms"] == [{"term": "sort"}]
     assert payload["n"] == 3
+
+
+def test_summarizer_payload_empty_when_no_roots() -> None:
+    task = _task([Operation.F3_SUMMARIZE], audio=False, pdf=False)
+    plan = build_plan(task)
+    f3 = next(s for s in plan.subtasks if s.operation == Operation.F3_SUMMARIZE)
+    payload = build_payload(f3, task, {})
+    assert payload["chunks"] == []
+
+
+def test_summarizer_tolerates_malformed_upstream() -> None:
+    task = _task([Operation.F1_TRANSCRIBE, Operation.F3_SUMMARIZE], pdf=False)
+    plan = build_plan(task)
+    f3 = next(s for s in plan.subtasks if s.operation == Operation.F3_SUMMARIZE)
+    results = {subtask_id_for("task-x", Operation.F1_TRANSCRIBE): "not-a-dict"}
+    payload = build_payload(f3, task, results)  # must not raise
+    assert payload["chunks"] == []
+
+
+def test_transcriber_payload_empty_when_no_audio() -> None:
+    task = _task([Operation.F1_TRANSCRIBE], audio=False, pdf=True)
+    # F1 not eligible without audio -> no transcriber subtask; build the payload directly
+    from src.plan import OPERATION_TO_AGENT, Subtask
+
+    subtask = Subtask(
+        id="st-task-x-F1",
+        agent=OPERATION_TO_AGENT[Operation.F1_TRANSCRIBE],
+        operation=Operation.F1_TRANSCRIBE,
+        required=True,
+    )
+    assert build_payload(subtask, task, {}) == {}
+
+
+def test_summarizer_structure_is_not_shared_constant() -> None:
+    task = _task([Operation.F3_SUMMARIZE], pdf=False)
+    plan = build_plan(task)
+    f3 = next(s for s in plan.subtasks if s.operation == Operation.F3_SUMMARIZE)
+    p1 = build_payload(f3, task, {})
+    cast("list[str]", p1["structure"]).append("MUTATED")
+    p2 = build_payload(f3, task, {})
+    assert "MUTATED" not in p2["structure"]

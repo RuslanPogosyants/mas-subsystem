@@ -65,7 +65,7 @@ def _build_ocr(subtask: Subtask, task: Task, results: dict[str, object | None]) 
 
 
 def _build_summarizer(subtask: Subtask, task: Task, results: dict[str, object | None]) -> dict[str, object]:
-    return {"chunks": _chunks(results, task.id), "max_length_chars": 4000, "structure": _SUMMARY_STRUCTURE}
+    return {"chunks": _chunks(results, task.id), "max_length_chars": 4000, "structure": list(_SUMMARY_STRUCTURE)}
 
 
 def _build_terminology(subtask: Subtask, task: Task, results: dict[str, object | None]) -> dict[str, object]:
@@ -73,13 +73,14 @@ def _build_terminology(subtask: Subtask, task: Task, results: dict[str, object |
 
 
 def _build_test_generator(subtask: Subtask, task: Task, results: dict[str, object | None]) -> dict[str, object]:
-    summary = _content(results, task.id, Operation.F3_SUMMARIZE)
+    summary = dict(_content(results, task.id, Operation.F3_SUMMARIZE))
     return {"summary": summary, "num_questions": 5, "difficulty": "medium"}
 
 
 def _build_recommender(subtask: Subtask, task: Task, results: dict[str, object | None]) -> dict[str, object]:
-    summary = _content(results, task.id, Operation.F3_SUMMARIZE)
-    terms = _content(results, task.id, Operation.F5_TERMS).get("terms", [])
+    summary = dict(_content(results, task.id, Operation.F3_SUMMARIZE))
+    raw_terms = _content(results, task.id, Operation.F5_TERMS).get("terms", [])
+    terms: list[object] = list(raw_terms) if isinstance(raw_terms, list) else []
     return {"summary": summary, "terms": terms, "n": 3, "filters": {}}
 
 
@@ -94,7 +95,15 @@ _BUILDERS: Final[dict[Operation, PayloadBuilder]] = {
 
 
 def build_payload(subtask: Subtask, task: Task, results: dict[str, object | None]) -> dict[str, object]:
-    """Build the request content for `subtask`, given resolved upstream `results`."""
+    """Build the request content for `subtask`, given resolved upstream `results`.
+
+    The `subtask` argument is part of the uniform builder contract; it is kept so
+    individual builders can inspect per-subtask config in the future without a
+    signature change.
+
+    Returned payloads may still share *nested* references with upstream results
+    and must be treated as read-only by consumers.
+    """
     builder = _BUILDERS.get(subtask.operation)
     if builder is None:
         return {}

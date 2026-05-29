@@ -67,6 +67,11 @@ select = [
 ignore = [
     "B008",
     "PLR0913",
+    # This is a Russian-language product: source strings, docstrings, and comments
+    # legitimately contain Cyrillic, which RUF001-003 flag as "ambiguous unicode".
+    "RUF001",
+    "RUF002",
+    "RUF003",
 ]
 
 [tool.ruff.lint.per-file-ignores]

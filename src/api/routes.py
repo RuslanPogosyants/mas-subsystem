@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any, Final
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
 
-from src.agents.coordinator import CoordinatorAgent
 from src.core.schemas import Document, DocumentType, Operation, Task, TaskStatus
 from src.db.repos import DocumentRepo, TaskRepo
 
@@ -125,25 +124,8 @@ async def create_task(
         conversation_id=f"conv-{task_id}",
         documents=documents,
     )
-    dispatch_tasks: set[asyncio.Task[None]] = request.app.state.dispatch_tasks
-    background = asyncio.create_task(_dispatch_in_background(request.app, task))
-    dispatch_tasks.add(background)
-    background.add_done_callback(dispatch_tasks.discard)
+    await request.app.state.coordinator.submit(task)
     return {"task_id": task_id, "status": TaskStatus.PLANNING.value}
-
-
-async def _dispatch_in_background(app: Any, task: Task) -> None:
-    """Run Coordinator dispatch with its own session."""
-    session_factory = app.state.session_factory
-    async with session_factory() as session:
-        task_repo = TaskRepo(session)
-        document_repo = DocumentRepo(session)
-        coordinator = CoordinatorAgent(
-            bus=app.state.bus,
-            task_repo=task_repo,
-            document_repo=document_repo,
-        )
-        await coordinator.dispatch(task)
 
 
 @router.get("/tasks/{task_id}")

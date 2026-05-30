@@ -22,6 +22,14 @@ def _force_fake_llm(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GIGACHAT_CREDENTIALS", "")
 
 
+@pytest.fixture(autouse=True)
+def _enable_demo_corpus(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Production defaults demo_mode off, so F6 refuses without a real corpus. The
+    test suite exercises the full F6 path with the built-in demo corpus, so enable
+    it here. Tests asserting the off behaviour override DEMO_MODE via monkeypatch."""
+    monkeypatch.setenv("DEMO_MODE", "true")
+
+
 @pytest.fixture(scope="session")
 def event_loop_policy() -> asyncio.AbstractEventLoopPolicy:
     """Session-scoped event loop policy."""

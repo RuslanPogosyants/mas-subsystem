@@ -174,7 +174,7 @@ All settings are loaded from environment variables or a `.env` file (pydantic-se
 | `OCR_BACKEND` | `fake` | `fake` or `pymupdf` |
 | `NER_BACKEND` | `fake` | `fake` or `spacy` |
 | `CORPUS_PATH` | `corpus` | Directory with `papers.jsonl` + `papers.npy` for F6 |
-| `DEMO_MODE` | `true` | F6 falls back to a built-in demo corpus when no real corpus is present |
+| `DEMO_MODE` | `false` | When `true`, F6 falls back to a built-in demo corpus if no real corpus is present; off by default so F6 refuses gracefully in production |
 | `COORD_TIMEOUT_TRANSCRIBER` | `600` | Per-agent deadline (seconds) |
 
 ---

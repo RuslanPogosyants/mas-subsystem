@@ -84,3 +84,30 @@ async def test_refuses_on_empty_question_list() -> None:
     agent = _agent(llm)
     reply = await agent.handle(_request({"summary": _summary()}))
     assert reply is not None and reply.performative == Performative.REFUSE
+
+
+async def test_tolerates_numeric_source_chunk_id_and_extra_fields() -> None:
+    # Real GigaChat fills source_chunk_id with an integer and may add stray fields;
+    # the LLM-facing model ignores them (the chunk linkage is internal, set to None).
+    raw = json.dumps(
+        {
+            "questions": [
+                {
+                    "question": "Что выведет код?",
+                    "type": "multi_choice",
+                    "choices": ["A", "B", "C"],
+                    "answer_idx": 0,
+                    "answer_indices": [0, 1],
+                    "source_chunk_id": 1,
+                    "explanation": "лишнее поле",
+                }
+            ]
+        }
+    )
+    agent = _agent(FakeLlmAdapter(responses=[raw]))
+    reply = await agent.handle(_request({"summary": _summary()}))
+    assert reply is not None and reply.performative == Performative.INFORM
+    question = reply.content["questions"][0]
+    assert question["type"] == "multi_choice"
+    assert question["source_chunk_id"] is None  # bogus int dropped; linkage set internally
+    QuizQuestion.model_validate(question)  # canonical schema validates clean

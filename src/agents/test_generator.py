@@ -8,9 +8,9 @@ is refused; otherwise the agent informs {quiz_id, questions, difficulty}.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from src.agents._llm_json import parse_with_retry
 from src.agents.base import AgentBase
@@ -25,17 +25,33 @@ _MAX_PARSE_RETRIES: Final[int] = 1
 _SYSTEM_PROMPT: Final[str] = (
     "Ты составляешь проверочный тест по учебному саммари. Ответь СТРОГО одним "
     'JSON-объектом {"questions": [...]}. Каждый вопрос: {question, type, choices, '
-    "answer_idx, answer_indices, source_chunk_id}, где type — одно из "
+    "answer_idx, answer_indices}, где type — одно из "
     "single_choice, multi_choice, open_answer. Без markdown и пояснений."
 )
 _DEFAULT_NUM_QUESTIONS: Final[int] = 5
 _DEFAULT_DIFFICULTY: Final[str] = "medium"
 
 
-class _RawQuiz(BaseModel):
-    """The raw JSON shape the LLM is asked to emit; questions validate strictly."""
+class _RawQuizQuestion(BaseModel):
+    """The per-question shape the LLM emits.
 
-    questions: list[QuizQuestion]
+    Lenient (extra="ignore") so stray fields the model invents — e.g. a numeric
+    source_chunk_id, which real GigaChat fills with an ordinal — do not fail the
+    whole quiz. The chunk linkage is an internal id the LLM cannot know; the agent
+    leaves it None. The Literal type still enforces the supported question types.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    question: str
+    type: Literal["single_choice", "multi_choice", "open_answer"]
+    choices: list[str] = Field(default_factory=list)
+    answer_idx: int | None = None
+    answer_indices: list[int] | None = None
+
+
+class _RawQuiz(BaseModel):
+    questions: list[_RawQuizQuestion]
 
 
 class TestGeneratorAgent(AgentBase):
@@ -64,11 +80,12 @@ class TestGeneratorAgent(AgentBase):
         )
         if quiz is None or not quiz.questions:
             return self._refuse(message, reason="llm returned invalid quiz json")
+        questions = [QuizQuestion(**raw.model_dump()) for raw in quiz.questions]
         return self._inform(
             message,
             content={
                 "quiz_id": f"quiz-{message.task_id}",
-                "questions": [question.model_dump() for question in quiz.questions],
+                "questions": [question.model_dump() for question in questions],
                 "difficulty": difficulty,
             },
         )

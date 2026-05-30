@@ -74,7 +74,7 @@ class TermRow(Base):
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     task_id: Mapped[str] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"))
-    text_chunk_id: Mapped[str | None] = mapped_column(ForeignKey("text_chunks.id"), nullable=True)
+    text_chunk_id: Mapped[str | None] = mapped_column(ForeignKey("text_chunks.id", ondelete="SET NULL"), nullable=True)
     term: Mapped[str] = mapped_column(Text, nullable=False)
     lemma: Mapped[str | None] = mapped_column(Text, nullable=True)
     frequency: Mapped[int | None] = mapped_column(Integer, nullable=True)

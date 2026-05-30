@@ -153,6 +153,13 @@ async def test_llm_call_latency_is_observed() -> None:
     assert after >= before + 1
 
 
+def test_model_call_seconds_exists() -> None:
+    from src.core import metrics
+
+    metrics.MODEL_CALL_SECONDS.labels(adapter="whisper", operation="F1").observe(0.5)
+    assert "mas_model_call_seconds" in metrics.render().decode()
+
+
 @pytest.mark.asyncio
 async def test_immediately_finalized_recovery_does_not_leak_gauge() -> None:
     # A recovered task whose results are all present finalizes without ever entering

@@ -19,6 +19,10 @@ AGENT_HANDLE_SECONDS = Histogram(
     ("agent", "operation", "outcome"),
     buckets=_LATENCY_BUCKETS,
 )
+# NOTE: for a task resumed after a crash, `Coordinator._resume` resets
+# `state.started_at` to the recovery time, so this measures seconds since
+# recovery, not since the original submit. (Consistent with the persisted
+# `duration_sec` artifact stat in assembly.py, which uses the same basis.)
 TASK_DURATION_SECONDS = Histogram(
     "mas_task_duration_seconds",
     "End-to-end seconds from task submit to finalize.",
@@ -44,6 +48,12 @@ LLM_CALL_SECONDS = Histogram(
     buckets=_LATENCY_BUCKETS,
 )
 RECOVERED_TASKS_TOTAL = Counter("mas_recovered_tasks_total", "In-flight tasks resumed on coordinator startup.")
+MODEL_CALL_SECONDS = Histogram(
+    "mas_model_call_seconds",
+    "Wall-clock seconds per underlying ML model call (transcribe/ocr/ner/embed).",
+    ("adapter", "operation"),
+    buckets=_LATENCY_BUCKETS,
+)
 
 
 def render() -> bytes:

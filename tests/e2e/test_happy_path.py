@@ -1,4 +1,4 @@
-"""E2E acceptance: full pipeline happy path. RED until end of M3."""
+"""E2E acceptance: full pipeline happy path."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import asyncio
 from typing import Any
 
 import pytest
+from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
 from src.main import app
 
@@ -26,8 +27,10 @@ class TestHappyPath:
         raise TimeoutError(f"task {task_id} did not complete in {timeout}s")
 
     async def test_full_pipeline_returns_complete_artifact(self) -> None:
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with (
+            LifespanManager(app),
+            AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client,
+        ):
             response = await client.post(
                 "/api/tasks",
                 files=[

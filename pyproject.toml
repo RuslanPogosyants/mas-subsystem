@@ -95,7 +95,7 @@ plugins = ["pydantic.mypy"]
 exclude = ["migrations/", "scripts/"]
 
 [[tool.mypy.overrides]]
-module = ["easyocr.*", "faster_whisper.*", "gigachat.*", "sentence_transformers.*", "fitz.*", "spacy.*"]
+module = ["easyocr.*", "faster_whisper.*", "gigachat.*", "sentence_transformers.*", "fitz.*", "spacy.*", "numpy.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

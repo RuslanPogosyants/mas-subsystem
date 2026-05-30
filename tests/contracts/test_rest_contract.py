@@ -41,3 +41,16 @@ class TestGetResultContract:
         with TestClient(app) as client:
             response = client.get("/api/tasks/task-nonexistent/result")
             assert response.status_code == 404
+
+
+@pytest.mark.e2e
+class TestUnsupportedDocumentTypeContract:
+    def test_post_unsupported_type_returns_400(self) -> None:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/tasks",
+                files=[("files", ("notes.txt", b"some lecture text", "text/plain"))],
+                data={"ops": ["F3"]},
+            )
+            assert response.status_code == 400
+            assert "unsupported" in response.json()["detail"].lower()

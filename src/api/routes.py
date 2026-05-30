@@ -86,6 +86,19 @@ async def create_task(
     except ValueError as error:
         raise HTTPException(status_code=400, detail=f"invalid operation: {error}") from error
 
+    # Reject unsupported inputs up front (before any disk/DB write): only audio,
+    # pdf, and image documents have an ingestion agent. Plain text has no chunker
+    # yet, so accepting it would silently produce an empty artifact.
+    document_types = [_detect_document_type(upload) for upload in files]
+    unsupported = [
+        upload.filename for upload, kind in zip(files, document_types, strict=False) if kind == DocumentType.TEXT
+    ]
+    if unsupported:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unsupported document type(s): {unsupported}; supported: audio, pdf, image",
+        )
+
     task_id = f"task-{uuid.uuid4().hex[:8]}"
     task_dir = UPLOAD_ROOT / task_id
 
@@ -98,7 +111,7 @@ async def create_task(
         for index, upload in enumerate(files):
             destination = _safe_destination(task_dir, upload.filename, index)
             await _save_upload(upload, destination)
-            document_type = _detect_document_type(upload)
+            document_type = document_types[index]
             document_id = f"doc-{task_id}-{index}"
             await document_repo.create(
                 document_id=document_id,

@@ -45,6 +45,16 @@ pytest tests\contracts -v
 
 Seven agents (TranscriberAgent, OCRAgent, SummarizerAgent, TestGeneratorAgent, TerminologyAgent, RecommenderAgent, CoordinatorAgent) communicate over Redis Streams under a FIPA-ACL-like protocol. See `ARCHITECTURE.md` (added in M4).
 
+## Observability
+
+Prometheus scrapes `/metrics` (exposed by the app on `:8000`); Grafana serves the dashboard at `:3000`.
+
+```powershell
+docker compose -f deploy/docker-compose.observability.yml up -d
+```
+
+The `MAS — Pipeline Overview` dashboard is provisioned automatically on Grafana start (login `admin` / `admin`, or browse anonymously).
+
 ## Conventions
 
 - Code style: [`docs/CODESTYLE.md`](docs/CODESTYLE.md)

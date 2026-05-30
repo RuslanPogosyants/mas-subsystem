@@ -1,0 +1,6 @@
+apiVersion: 1
+providers:
+  - name: mas
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards

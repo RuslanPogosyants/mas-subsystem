@@ -50,6 +50,14 @@ async def test_refuses_when_no_query() -> None:
     assert "summary or terms" in reply.content["reason"]
 
 
+async def test_refuses_on_embedding_dimension_mismatch() -> None:
+    # 2-dim corpus but a 3-dim query embedding -> refuse, never silently score garbage.
+    agent = _agent(_CORPUS, [1.0, 0.0, 0.0])
+    reply = await agent.handle(_request({"summary": _summary(), "terms": []}))
+    assert reply is not None and reply.performative == Performative.REFUSE
+    assert "dimension" in reply.content["reason"]
+
+
 async def test_ranks_by_cosine_and_sets_relevance() -> None:
     agent = _agent(_CORPUS, [1.0, 0.0])  # aligned with "Graphs"
     reply = await agent.handle(_request({"summary": _summary(), "terms": [], "n": 2}))

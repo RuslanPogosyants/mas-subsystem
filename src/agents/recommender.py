@@ -92,6 +92,8 @@ class RecommenderAgent(AgentBase):
         filters = message.content.get("filters")
         year_min, year_max = _year_bounds(filters if isinstance(filters, dict) else {})
         query_vector = (await self._embedding.encode([query]))[0]
+        if len(query_vector) != len(self._corpus[0].embedding):
+            return self._refuse(message, reason="embedding dimension mismatch")
         scored = [
             (entry, _cosine(query_vector, entry.embedding))
             for entry in self._corpus

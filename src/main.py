@@ -37,6 +37,9 @@ if TYPE_CHECKING:
 
     from src.adapters.embedding import EmbeddingAdapter
     from src.adapters.llm import LlmAdapter
+    from src.adapters.ner import NerAdapter
+    from src.adapters.ocr import OcrAdapter
+    from src.adapters.transcriber import TranscriberAdapter
     from src.agents.base import AgentBase
     from src.config import Settings
 
@@ -67,6 +70,37 @@ def _build_embedding(settings: Settings) -> EmbeddingAdapter:
 
         return SentenceTransformerEmbeddingAdapter(settings.embedding_model)
     return FakeEmbeddingAdapter()
+
+
+def _build_transcriber(settings: Settings) -> TranscriberAdapter:
+    """Real Whisper adapter when backend is configured, else the in-process fake."""
+    if settings.transcriber_backend == "whisper":
+        from src.adapters.whisper_transcriber import WhisperTranscriberAdapter
+
+        return WhisperTranscriberAdapter(
+            model_size=settings.whisper_model,
+            device=settings.whisper_device,
+            compute_type=settings.whisper_compute_type,
+        )
+    return FakeTranscriberAdapter()
+
+
+def _build_ocr(settings: Settings) -> OcrAdapter:
+    """Real PyMuPDF+EasyOCR adapter when backend is configured, else the fake."""
+    if settings.ocr_backend == "pymupdf":
+        from src.adapters.pymupdf_ocr import PymupdfOcrAdapter
+
+        return PymupdfOcrAdapter(languages=[s.strip() for s in settings.ocr_languages.split(",") if s.strip()])
+    return FakeOcrAdapter()
+
+
+def _build_ner(settings: Settings) -> NerAdapter:
+    """Real spaCy NER adapter when backend is configured, else the in-process fake."""
+    if settings.ner_backend == "spacy":
+        from src.adapters.spacy_ner import SpacyNerAdapter
+
+        return SpacyNerAdapter(model=settings.spacy_model)
+    return FakeNerAdapter()
 
 
 _DEMO_PAPERS: Final[tuple[tuple[str, int, str], ...]] = (
@@ -160,8 +194,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     bus = RedisStreamBus(redis)
 
     llm = _build_llm(settings)
-    transcriber_agent = TranscriberAgent(bus=bus, transcriber=FakeTranscriberAdapter())
-    ocr_agent = OcrAgent(bus=bus, ocr=FakeOcrAdapter())
+    transcriber_agent = TranscriberAgent(bus=bus, transcriber=_build_transcriber(settings))
+    ocr_agent = OcrAgent(bus=bus, ocr=_build_ocr(settings))
     summarizer_agent = SummarizerAgent(
         bus=bus,
         llm=llm,
@@ -169,7 +203,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         overlap=settings.summarizer_overlap,
     )
     test_generator_agent = TestGeneratorAgent(bus=bus, llm=llm)
-    terminology_agent = TerminologyAgent(bus=bus, ner=FakeNerAdapter())
+    terminology_agent = TerminologyAgent(bus=bus, ner=_build_ner(settings))
     recommender_agent = await _build_recommender(bus, settings)
     agents = [
         transcriber_agent,

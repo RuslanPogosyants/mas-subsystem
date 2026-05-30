@@ -34,6 +34,15 @@ class Settings(BaseSettings):
     embedding_model: str = "intfloat/multilingual-e5-base"
     corpus_path: str = "corpus"
 
+    transcriber_backend: str = "fake"  # "fake" | "whisper"
+    whisper_model: str = "large-v3"
+    whisper_device: str = "cuda"
+    whisper_compute_type: str = "float16"
+    ocr_backend: str = "fake"  # "fake" | "pymupdf"
+    ocr_languages: str = "ru,en"
+    ner_backend: str = "fake"  # "fake" | "spacy"
+    spacy_model: str = "ru_core_news_lg"
+
     log_level: str = "INFO"
     log_format: str = "coordinator"
 

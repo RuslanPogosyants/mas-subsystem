@@ -61,3 +61,51 @@ def test_citations_intrinsics_scores() -> None:
     assert m["count"] == 2
     assert round(m["mean_relevance"], 2) == 0.6
     assert m["min_relevance"] == 0.4 and m["max_relevance"] == 0.8
+
+
+# --- edge branches not covered above ---
+
+
+def test_summary_intrinsics_empty_returns_zero_fields() -> None:
+    out = summary_intrinsics(None, 100)
+    assert out == {
+        "section_count": 0,
+        "sections_present": [],
+        "summary_chars": 0,
+        "compression_ratio": 0.0,
+    }
+
+
+def test_summary_intrinsics_zero_source_chars_gives_zero_ratio() -> None:
+    out = summary_intrinsics({"sections": [{"type": "thesis", "text": "abc"}]}, 0)
+    assert out["compression_ratio"] == 0.0
+    assert out["summary_chars"] == 3
+
+
+def test_terms_intrinsics_in_source_fraction_full_match() -> None:
+    out = terms_intrinsics([{"term": "Graph", "frequency": 2, "category": "x"}], "a graph here")
+    assert out["in_source_fraction"] == 1.0
+    assert out["avg_frequency"] == 2.0
+
+
+def test_terms_intrinsics_empty_list() -> None:
+    assert terms_intrinsics([], "src")["count"] == 0
+
+
+def test_quiz_intrinsics_mixed_types_well_formed_count() -> None:
+    quiz = [
+        {"type": "single_choice", "choices": ["A", "B"], "answer_idx": 0},
+        {"type": "single_choice", "choices": ["A", "B"], "answer_idx": None},
+        {"type": "multi_choice", "choices": ["A", "B"], "answer_indices": [0]},
+        {"type": "open_answer", "question": "why?"},
+    ]
+    out = quiz_intrinsics(quiz)
+    assert out["count"] == 4
+    assert out["well_formed_count"] == 3
+
+
+def test_citations_intrinsics_min_max_mean() -> None:
+    out = citations_intrinsics([{"relevance_score": 0.2}, {"relevance_score": 0.8}])
+    assert out["mean_relevance"] == 0.5
+    assert out["min_relevance"] == 0.2
+    assert out["max_relevance"] == 0.8

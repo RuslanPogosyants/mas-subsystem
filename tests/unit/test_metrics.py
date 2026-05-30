@@ -137,6 +137,23 @@ class _FakeRecovery:
 
 
 @pytest.mark.asyncio
+async def test_llm_call_latency_is_observed() -> None:
+    from pydantic import BaseModel
+    from src.adapters.llm import FakeLlmAdapter
+    from src.agents._llm_json import parse_with_retry
+
+    class _M(BaseModel):
+        introduction: str
+        key_points: str
+        conclusions: str
+
+    before = _sample_count(metrics.LLM_CALL_SECONDS, outcome="parsed")
+    await parse_with_retry(FakeLlmAdapter(), system="s", user="u", model_cls=_M, retries=1)
+    after = _sample_count(metrics.LLM_CALL_SECONDS, outcome="parsed")
+    assert after >= before + 1
+
+
+@pytest.mark.asyncio
 async def test_immediately_finalized_recovery_does_not_leak_gauge() -> None:
     # A recovered task whose results are all present finalizes without ever entering
     # self._tasks; it must NOT inc the in-flight gauge (only RECOVERED_TASKS_TOTAL moves).

@@ -6,9 +6,12 @@ that asks the LLM for structured JSON (F3 summary, F4 quiz, ...).
 from __future__ import annotations
 
 import json
+import time
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ValidationError
+
+from src.core.metrics import LLM_CALL_SECONDS
 
 if TYPE_CHECKING:
     from src.adapters.llm import LlmAdapter
@@ -29,8 +32,12 @@ async def parse_with_retry[ModelT: BaseModel](
     """
     prompt = user
     for _ in range(retries + 1):
+        start = time.perf_counter()
         response = await llm.complete(system=system, user=prompt)
         parsed = _parse(response, model_cls)
+        LLM_CALL_SECONDS.labels(outcome="parsed" if parsed is not None else "unparsed").observe(
+            time.perf_counter() - start
+        )
         if parsed is not None:
             return parsed
         prompt = user + _RETRY_HINT

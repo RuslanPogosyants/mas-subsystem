@@ -65,6 +65,8 @@ async def test_respects_top_n() -> None:
     reply = await agent.handle(_request({"chunks": [_chunk("c1", "x")], "top_n": 2}))
     assert reply is not None and reply.performative == Performative.INFORM
     assert len(reply.content["terms"]) == 2
+    # Equal score (freq 1, single chunk) -> deterministic lemma-ascending tie-break.
+    assert [term["lemma"] for term in reply.content["terms"]] == ["альфа", "бета"]
 
 
 async def test_ner_label_used_as_category() -> None:

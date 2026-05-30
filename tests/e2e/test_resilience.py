@@ -1,4 +1,4 @@
-"""E2E acceptance tests for S8 graceful degradation. RED until end of M3."""
+"""E2E acceptance tests for S8 graceful degradation."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import asyncio
 from typing import Any
 
 import pytest
+from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
 from src.main import app
 
@@ -29,8 +30,10 @@ class TestS8aForceRefuseF6:
     async def test_force_refuse_f6_returns_partial(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("FORCE_REFUSE", "F6")
 
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with (
+            LifespanManager(app),
+            AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client,
+        ):
             response = await client.post(
                 "/api/tasks",
                 files=[
@@ -64,8 +67,10 @@ class TestS8bHangTimeoutF6:
         monkeypatch.setenv("HANG_AGENT", "F6")
         monkeypatch.setenv("COORD_TIMEOUT_RECOMMENDER", "2")
 
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with (
+            LifespanManager(app),
+            AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client,
+        ):
             response = await client.post(
                 "/api/tasks",
                 files=[("files", ("lecture.mp3", b"FAKE", "audio/mpeg"))],

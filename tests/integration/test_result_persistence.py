@@ -10,6 +10,7 @@ from src.agents.store import DbTaskStore
 from src.core.schemas import DocumentType, Operation
 from src.db.models import Base, CitationRow, QuizRow, SummaryRow, TermRow, TextChunkRow
 from src.db.repos import DocumentRepo, ResultRepo, TaskRepo
+from src.db.result_mapping import content_from_chunk_rows
 
 
 @pytest_asyncio.fixture
@@ -153,3 +154,54 @@ async def test_save_terms_replaces_and_drops_orphans(session_factory) -> None:
         rows = (await session.execute(select(TermRow).where(TermRow.task_id == "t2"))).scalars().all()
         assert len(rows) == 1
         assert rows[0].frequency == 2
+
+
+@pytest.mark.integration
+async def test_terms_link_to_persisted_chunks(session_factory) -> None:
+    async with session_factory() as session:
+        await TaskRepo(session).create(task_id="t3", requested_outputs=[Operation.F1_TRANSCRIBE, Operation.F5_TERMS])
+        await DocumentRepo(session).create(
+            document_id="doc-t3-0", task_id="t3", document_type=DocumentType.AUDIO, file_path="/a.mp3"
+        )
+        await session.commit()
+    async with session_factory() as session:
+        await ResultRepo(session).save_chunks(
+            "t3",
+            {
+                "chunks": [
+                    {
+                        "id": "chunk-doc-t3-0-0",
+                        "task_id": "t3",
+                        "document_id": "doc-t3-0",
+                        "source_type": "audio",
+                        "content": "graph theory",
+                        "chunk_index": 0,
+                        "confidence": None,
+                        "meta": {},
+                    }
+                ]
+            },
+        )
+        await session.commit()
+    async with session_factory() as session:
+        await ResultRepo(session).save_terms(
+            "t3",
+            {
+                "terms": [
+                    {
+                        "term": "Граф",
+                        "lemma": "граф",
+                        "frequency": 2,
+                        "category": "general",
+                        "source_chunk_id": "chunk-doc-t3-0-0",
+                    }
+                ]
+            },
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        chunk = (await session.execute(select(TextChunkRow).where(TextChunkRow.task_id == "t3"))).scalars().one()
+        term = (await session.execute(select(TermRow).where(TermRow.task_id == "t3"))).scalars().one()
+        assert term.text_chunk_id == chunk.id  # FK link survives the round trip
+        assert content_from_chunk_rows([chunk])["chunks"][0]["content"] == "graph theory"

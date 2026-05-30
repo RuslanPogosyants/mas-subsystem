@@ -268,8 +268,8 @@ async def test_summarizer_skipped_when_all_parents_fail() -> None:
     assert store.artifacts["task-1"]["status"] == "failed"
 
 
-async def test_recommender_skipped_when_one_parent_fails_under_all_join() -> None:
-    # F6 (join="all") needs both F3 and F5; F5 fails -> F6 must be skipped, not run on F3 alone.
+async def test_recommender_degrades_when_one_parent_fails_under_any_join() -> None:
+    # F6 (join="any") degrades: F5 fails but F3 succeeded -> F6 must still be dispatched.
     bus, store, clock = FakeBus(), FakeTaskStore(), Clock()
     coordinator = _coordinator(bus, store, clock)
     await coordinator.submit(
@@ -285,6 +285,7 @@ async def test_recommender_skipped_when_one_parent_fails_under_all_join() -> Non
     f3_request = bus.requests_for(channel_for_agent("summarizer"))[0]
     bus.feed_inbox(_inform(f3_request, {"summary_id": "s1", "sections": [], "source_chunk_ids": []}))
     refused: set[str] = set()
+    f6_dispatched = False
     for _ in range(10):
         for request in bus.requests_for(channel_for_agent("terminology")):
             if request.message_id not in refused:
@@ -292,13 +293,11 @@ async def test_recommender_skipped_when_one_parent_fails_under_all_join() -> Non
                 bus.feed_inbox(_refuse(request, "terms down"))
         await coordinator._tick()
         clock.advance(6.0)
+        if bus.requests_for(channel_for_agent("recommender")):
+            f6_dispatched = True
         if "task-1" in store.artifacts:
             break
-    assert bus.requests_for(channel_for_agent("recommender")) == [], "F6 must be skipped when F5 failed (join=all)"
-    artifact = store.artifacts["task-1"]
-    assert artifact["status"] == "partial_ready"
-    failed_ops = {failure["op"] for failure in artifact["stats"]["failed_operations"]}
-    assert {"F5", "F6"} <= failed_ops
+    assert f6_dispatched, "F6 must be dispatched when F3 succeeded even though F5 failed (join=any)"
 
 
 async def test_text_only_summary_task_does_not_complete_when_agent_refuses_empty() -> None:

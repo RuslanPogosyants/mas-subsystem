@@ -29,8 +29,11 @@ OPERATION_TO_AGENT: dict[Operation, AgentName] = {
 }
 
 # Operations whose parents are alternative chunk SOURCES (F1 audio / F2 OCR):
-# run on whichever upstream succeeded. Everything else needs all parents.
-ANY_JOIN_OPERATIONS: Final[frozenset[Operation]] = frozenset({Operation.F3_SUMMARIZE, Operation.F5_TERMS})
+# run on whichever upstream succeeded. F6 also degrades: it runs on whichever
+# of F3/F5 succeeded and is skipped only if both fail. Everything else needs all parents.
+ANY_JOIN_OPERATIONS: Final[frozenset[Operation]] = frozenset(
+    {Operation.F3_SUMMARIZE, Operation.F5_TERMS, Operation.F6_RECOMMEND}
+)
 
 
 class Subtask(BaseModel):

@@ -163,4 +163,4 @@ def test_summarizer_and_terminology_use_any_join() -> None:
     assert join_by_op[Operation.F5_TERMS] == "any"
     assert join_by_op[Operation.F1_TRANSCRIBE] == "all"
     assert join_by_op[Operation.F4_TEST] == "all"
-    assert join_by_op[Operation.F6_RECOMMEND] == "all"
+    assert join_by_op[Operation.F6_RECOMMEND] == "any"  # F6 degrades per D2: runs on whichever of F3/F5 succeeded

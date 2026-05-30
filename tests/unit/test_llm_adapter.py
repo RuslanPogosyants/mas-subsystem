@@ -9,9 +9,17 @@ from src.adapters.llm import FakeLlmAdapter
 
 async def test_default_returns_valid_summary_json() -> None:
     fake = FakeLlmAdapter()
-    response = await fake.complete(system="s", user="hello")
+    response = await fake.complete(system="сделай саммари", user="hello")
     data = json.loads(response)
     assert set(data) == {"introduction", "key_points", "conclusions"}
+
+
+async def test_default_returns_quiz_json_when_prompt_asks_for_questions() -> None:
+    fake = FakeLlmAdapter()
+    response = await fake.complete(system="верни JSON с ключом questions", user="hello")
+    data = json.loads(response)
+    assert "questions" in data
+    assert data["questions"][0]["type"] == "single_choice"
 
 
 async def test_scripted_responses_returned_in_order_then_repeat_last() -> None:

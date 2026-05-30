@@ -8,6 +8,10 @@ short segments into reasonably sized TextChunks; the F1 agent re-stamps identity
 from __future__ import annotations
 
 import asyncio
+import glob
+import importlib.util
+import os
+import sys
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -18,6 +22,33 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
 _DEFAULT_TARGET_CHARS = 1500
+
+
+def _enable_cuda_dll_search() -> None:
+    """Make pip-installed NVIDIA CUDA libraries discoverable by CTranslate2 on Windows.
+
+    The ``nvidia-cublas/cudnn/cuda-runtime`` wheels drop their DLLs under
+    ``site-packages/nvidia/*/bin``. CTranslate2 resolves cuBLAS/cuDNN through the OS
+    loader at the first GPU encode; the transitive chain (cuBLAS -> cudart) only
+    resolves reliably when those directories are on PATH. Prepending them — and
+    registering them as DLL directories — lets faster-whisper run on GPU without a
+    system-wide CUDA toolkit. No-op off Windows or when the wheels are absent.
+    """
+    if sys.platform != "win32":
+        return
+    spec = importlib.util.find_spec("nvidia")
+    locations = list(spec.submodule_search_locations) if spec and spec.submodule_search_locations else []
+    bin_dirs = [
+        directory
+        for root in locations
+        for directory in glob.glob(os.path.join(root, "*", "bin"))
+        if os.path.isdir(directory)
+    ]
+    if not bin_dirs:
+        return
+    os.environ["PATH"] = os.pathsep.join(bin_dirs) + os.pathsep + os.environ.get("PATH", "")
+    for directory in bin_dirs:
+        os.add_dll_directory(directory)
 
 
 def segments_to_chunks(segments: Iterable[Any], *, target_chars: int = _DEFAULT_TARGET_CHARS) -> list[TextChunk]:
@@ -81,6 +112,8 @@ class WhisperTranscriberAdapter:
 
     def _ensure_model(self) -> Any:
         if self._model is None:
+            if self._device == "cuda":
+                _enable_cuda_dll_search()
             from faster_whisper import WhisperModel
 
             self._model = WhisperModel(self._model_size, device=self._device, compute_type=self._compute_type)

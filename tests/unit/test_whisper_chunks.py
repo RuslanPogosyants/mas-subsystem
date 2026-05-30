@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from src.adapters.whisper_transcriber import segments_to_chunks
+from src.adapters.whisper_transcriber import _enable_cuda_dll_search, segments_to_chunks
 
 
 @dataclass
@@ -36,3 +36,10 @@ def test_meta_carries_time_span() -> None:
     chunks = segments_to_chunks([_Seg("x", start=1.5, end=3.0)], target_chars=10)
     assert chunks[0].meta["start"] == 1.5
     assert chunks[0].meta["end"] == 3.0
+
+
+def test_enable_cuda_dll_search_is_safe_and_idempotent() -> None:
+    # No-op off Windows / when the NVIDIA wheels are absent; must never raise and
+    # is safe to call repeatedly (it guards the lazy GPU model load).
+    _enable_cuda_dll_search()
+    _enable_cuda_dll_search()

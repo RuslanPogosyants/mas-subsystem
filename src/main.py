@@ -19,6 +19,7 @@ from src.adapters.transcriber import FakeTranscriberAdapter
 from src.agents.coordinator import Coordinator
 from src.agents.ocr import OcrAgent
 from src.agents.recommender import CorpusEntry, RecommenderAgent, load_corpus
+from src.agents.recovery import DbTaskRecovery
 from src.agents.store import DbTaskStore
 from src.agents.summarizer import SummarizerAgent
 from src.agents.terminology import TerminologyAgent
@@ -156,6 +157,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     coordinator = Coordinator(
         bus=bus,
         store=DbTaskStore(session_factory),
+        recovery=DbTaskRecovery(session_factory),
         agent_timeouts=_agent_timeouts(settings),
     )
 

@@ -125,9 +125,12 @@ async def _demo_corpus(embedding: EmbeddingAdapter) -> list[CorpusEntry]:
 
 
 async def _build_recommender(bus: RedisStreamBus, settings: Settings) -> RecommenderAgent:
-    """Build F6 with a real corpus when present, else a built-in demo corpus."""
+    """Build F6 with a real corpus when present; in demo_mode fall back to a
+    built-in demo corpus, otherwise an empty corpus (the agent then refuses)."""
     embedding = _build_embedding(settings)
-    corpus = load_corpus(settings.corpus_path) or await _demo_corpus(embedding)
+    corpus = load_corpus(settings.corpus_path)
+    if not corpus and settings.demo_mode:
+        corpus = await _demo_corpus(embedding)
     return RecommenderAgent(bus=bus, embedding=embedding, corpus=corpus)
 
 

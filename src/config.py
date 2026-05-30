@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     force_refuse: str = ""
     hang_agent: str = ""
 
+    demo_mode: bool = True  # gates the F6 demo-corpus fallback; set False in production
+
 
 def get_settings() -> Settings:
     """Settings factory; cacheable via FastAPI Depends."""

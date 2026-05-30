@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Final
 
+from loguru import logger
 from pydantic import BaseModel
 
 from src.agents._llm_json import parse_with_retry
@@ -77,15 +78,31 @@ class SummarizerAgent(AgentBase):
         return self._inform(message, content=summary.model_dump())
 
     async def _summarize(self, text: str) -> _RawSummary | None:
+        """Map-reduce with graceful per-block degradation.
+
+        A block the LLM declines (e.g. a content-filter refusal on a sensitive
+        passage) or returns unparseable JSON for is skipped, not fatal — the
+        summary is reduced from the blocks that succeeded. Only an all-blocks
+        failure refuses. If the reduce step itself is declined, the first
+        surviving partial is returned so a usable summary still reaches the user.
+        """
         if len(text) <= self._block_chars:
             return await self._call(text)
+        blocks = self._split(text)
         partials: list[_RawSummary] = []
-        for block in self._split(text):
+        for block in blocks:
             partial = await self._call(block)
-            if partial is None:
-                return None
-            partials.append(partial)
-        return await self._call(self._reduce_prompt(partials))
+            if partial is not None:
+                partials.append(partial)
+        skipped = len(blocks) - len(partials)
+        if skipped:
+            logger.warning(f"summarizer skipped {skipped}/{len(blocks)} block(s): LLM declined or invalid JSON")
+        if not partials:
+            return None
+        if len(partials) == 1:
+            return partials[0]
+        reduced = await self._call(self._reduce_prompt(partials))
+        return reduced if reduced is not None else partials[0]
 
     def _split(self, text: str) -> list[str]:
         step = max(1, self._block_chars - self._overlap)

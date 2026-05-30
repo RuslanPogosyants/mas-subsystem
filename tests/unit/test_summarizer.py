@@ -82,3 +82,43 @@ async def test_refuses_after_retries_exhausted() -> None:
     assert reply is not None and reply.performative == Performative.REFUSE
     assert "invalid summary json" in reply.content["reason"]
     assert len(llm.calls) == 3
+
+
+async def test_skips_declined_block_and_summarizes_from_survivor() -> None:
+    # Two blocks: the first parses; the second is declined on all 3 attempts and
+    # is skipped. A single survivor is returned directly (no reduce) — graceful
+    # degradation instead of failing the whole summary (real GigaChat filter case).
+    llm = FakeLlmAdapter(responses=[_valid_json(kp="из выжившего блока"), "отказ", "отказ", "отказ"])
+    agent = _agent(llm, block_chars=10, overlap=2)
+    reply = await agent.handle(_request({"chunks": [{"id": "c1", "content": "x" * 12}]}))
+    assert reply is not None and reply.performative == Performative.INFORM
+    by_type = {section.type: section.text for section in Summary.model_validate(reply.content).sections}
+    assert by_type["thesis"] == "из выжившего блока"
+
+
+async def test_refuses_only_when_all_blocks_declined() -> None:
+    llm = FakeLlmAdapter(responses=["отказ"])  # clamps to last -> every call declined
+    agent = _agent(llm, block_chars=10, overlap=2)
+    reply = await agent.handle(_request({"chunks": [{"id": "c1", "content": "x" * 12}]}))
+    assert reply is not None and reply.performative == Performative.REFUSE
+
+
+async def test_reduces_when_multiple_blocks_survive() -> None:
+    llm = FakeLlmAdapter(responses=[_valid_json(kp="a"), _valid_json(kp="b"), _valid_json(kp="итог")])
+    agent = _agent(llm, block_chars=10, overlap=2)
+    reply = await agent.handle(_request({"chunks": [{"id": "c1", "content": "x" * 12}]}))
+    assert reply is not None and reply.performative == Performative.INFORM
+    by_type = {section.type: section.text for section in Summary.model_validate(reply.content).sections}
+    assert by_type["thesis"] == "итог"
+    assert len(llm.calls) == 3
+
+
+async def test_falls_back_to_partial_when_reduce_declined() -> None:
+    # Both blocks parse, but the reduce step is declined -> the first surviving
+    # partial is returned so a usable summary still reaches the user.
+    llm = FakeLlmAdapter(responses=[_valid_json(kp="первый"), _valid_json(kp="второй"), "отказ", "отказ", "отказ"])
+    agent = _agent(llm, block_chars=10, overlap=2)
+    reply = await agent.handle(_request({"chunks": [{"id": "c1", "content": "x" * 12}]}))
+    assert reply is not None and reply.performative == Performative.INFORM
+    by_type = {section.type: section.text for section in Summary.model_validate(reply.content).sections}
+    assert by_type["thesis"] == "первый"

@@ -86,6 +86,32 @@ async def test_refuses_on_empty_question_list() -> None:
     assert reply is not None and reply.performative == Performative.REFUSE
 
 
+async def test_drops_malformed_questions_keeps_well_formed() -> None:
+    mixed = json.dumps(
+        {
+            "questions": [
+                {"question": "ok?", "type": "single_choice", "choices": ["A", "B"], "answer_idx": 0},
+                {"question": "bad?", "type": "single_choice", "choices": ["A", "B"], "answer_idx": None},
+            ]
+        }
+    )
+    agent = _agent(FakeLlmAdapter(responses=[mixed]))
+    reply = await agent.handle(_request({"summary": _summary()}))
+    assert reply is not None and reply.performative == Performative.INFORM
+    assert len(reply.content["questions"]) == 1
+    assert reply.content["questions"][0]["question"] == "ok?"
+
+
+async def test_refuses_when_all_questions_malformed() -> None:
+    bad = json.dumps(
+        {"questions": [{"question": "bad?", "type": "single_choice", "choices": ["A", "B"], "answer_idx": 9}]}
+    )
+    agent = _agent(FakeLlmAdapter(responses=[bad, bad]))
+    reply = await agent.handle(_request({"summary": _summary()}))
+    assert reply is not None and reply.performative == Performative.REFUSE
+    assert "well-formed" in reply.content["reason"]
+
+
 async def test_tolerates_numeric_source_chunk_id_and_extra_fields() -> None:
     # Real GigaChat fills source_chunk_id with an integer and may add stray fields;
     # the LLM-facing model ignores them (the chunk linkage is internal, set to None).

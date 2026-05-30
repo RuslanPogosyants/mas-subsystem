@@ -100,6 +100,19 @@ class QuizQuestion(BaseModel):
     answer_indices: list[int] | None = None
     source_chunk_id: str | None = None
 
+    def is_well_formed(self) -> bool:
+        """True if the question is answerable: open_answer has text; choice types
+        have >= 2 choices and in-range answer index/indices."""
+        _min_choices = 2
+        if self.type == "open_answer":
+            return bool(self.question.strip())
+        if len(self.choices) < _min_choices:
+            return False
+        if self.type == "single_choice":
+            return isinstance(self.answer_idx, int) and 0 <= self.answer_idx < len(self.choices)
+        indices = self.answer_indices or []
+        return bool(indices) and all(0 <= index < len(self.choices) for index in indices)
+
 
 class Citation(BaseModel):
     model_config = ConfigDict(extra="forbid")

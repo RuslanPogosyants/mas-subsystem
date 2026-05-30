@@ -81,11 +81,14 @@ class TestGeneratorAgent(AgentBase):
         if quiz is None or not quiz.questions:
             return self._refuse(message, reason="llm returned invalid quiz json")
         questions = [QuizQuestion(**raw.model_dump()) for raw in quiz.questions]
+        well_formed = [question for question in questions if question.is_well_formed()]
+        if not well_formed:
+            return self._refuse(message, reason="llm returned no well-formed quiz questions")
         return self._inform(
             message,
             content={
                 "quiz_id": f"quiz-{message.task_id}",
-                "questions": [question.model_dump() for question in questions],
+                "questions": [question.model_dump() for question in well_formed],
                 "difficulty": difficulty,
             },
         )

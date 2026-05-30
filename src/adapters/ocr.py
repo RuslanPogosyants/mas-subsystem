@@ -1,7 +1,8 @@
-"""OCR adapter: protocol + in-process fake.
+"""OCR adapter: Protocol + in-process fake.
 
-Real EasyOCR + PyMuPDF wrappers are built in M3. M2 uses the fake to keep CI
-free of heavyweight ML dependencies.
+The real PyMuPDF + EasyOCR backend lives in `pymupdf_ocr.py` and is selected when
+`ocr_backend="pymupdf"`. Tests and the default pipeline use `FakeOcrAdapter` to
+keep CI free of heavyweight ML dependencies.
 """
 
 from __future__ import annotations

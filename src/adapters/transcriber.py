@@ -1,8 +1,8 @@
-"""Transcription adapter: protocol + in-process fake.
+"""Transcription adapter: Protocol + in-process fake.
 
-The real Whisper-based adapter lives in `whisper_adapter.py` and is built in
-M3 when faster-whisper / GPU drivers are wired. Tests and the M2 dispatch
-pipeline use `FakeTranscriberAdapter` to keep CI lean and deterministic.
+The real faster-whisper backend lives in `whisper_transcriber.py` and is selected
+when `transcriber_backend="whisper"`. Tests and the default pipeline use
+`FakeTranscriberAdapter` to keep CI lean and free of heavyweight ML dependencies.
 """
 
 from __future__ import annotations

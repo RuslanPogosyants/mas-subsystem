@@ -133,7 +133,7 @@ class Coordinator:
             for reply in replies:
                 state = self._tasks.get(reply.task_id)
                 if state is not None:
-                    self._route_reply(state, reply, now)
+                    await self._route_reply(state, reply, now)
             for task_id in list(self._tasks):
                 state = self._tasks.get(task_id)
                 if state is None:
@@ -145,7 +145,7 @@ class Coordinator:
                     logger.exception(f"coordinator abandoning task {task_id}: {error}")
                     await self._abandon(task_id)
 
-    def _route_reply(self, state: TaskState, reply: Message, now: float) -> None:
+    async def _route_reply(self, state: TaskState, reply: Message, now: float) -> None:
         subtask_id = reply.subtask_id
         if subtask_id is None or subtask_id not in state.pending:
             return
@@ -159,6 +159,11 @@ class Coordinator:
         state.resolved_at[subtask_id] = now
         state.retry_at.pop(subtask_id, None)
         state.pending.discard(subtask_id)
+        subtask = state.plan.get(subtask_id)
+        try:
+            await self._store.save_result(state.task.id, subtask.operation, reply.content)
+        except Exception as error:
+            logger.exception(f"failed to persist result for {subtask_id}: {error}")
 
     async def _advance(self, state: TaskState, now: float) -> None:
         changed = True

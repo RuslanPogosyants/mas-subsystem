@@ -64,6 +64,7 @@ class FakeTaskStore:
         self.status: dict[str, str] = {}
         self.artifacts: dict[str, dict[str, Any]] = {}
         self.stats: dict[str, dict[str, Any]] = {}
+        self.results: list[tuple[str, Any, dict[str, Any]]] = []
 
     async def set_status(self, task_id: str, status: Any) -> None:
         self.status[task_id] = status.value
@@ -71,3 +72,6 @@ class FakeTaskStore:
     async def save_artifact(self, task_id: str, *, final_artifact: dict[str, Any], stats: dict[str, Any]) -> None:
         self.artifacts[task_id] = final_artifact
         self.stats[task_id] = stats
+
+    async def save_result(self, task_id: str, operation: Any, content: dict[str, Any]) -> None:
+        self.results.append((task_id, operation, content))

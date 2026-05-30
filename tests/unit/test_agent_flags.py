@@ -19,7 +19,7 @@ def _request() -> Message:
         receiver="TranscriberAgent",
         task_id="task-x",
         conversation_id="conv-x",
-        content={"file_path": "/x.mp3", "language": "ru"},
+        content={"document_id": "doc-task-x-0", "file_path": "/x.mp3", "language": "ru"},
         subtask_id="st-task-x-F1",
     )
 

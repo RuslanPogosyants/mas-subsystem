@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from src.core.schemas import DocumentType, Operation, TaskStatus
-from src.db.models import DocumentRow, TaskRow
-from src.db.result_mapping import citation_rows, quiz_row, summary_row, term_rows
+from src.db.models import CitationRow, DocumentRow, TaskRow, TermRow, TextChunkRow
+from src.db.result_mapping import chunk_rows, citation_rows, quiz_row, summary_row, term_rows
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -95,9 +95,19 @@ class ResultRepo:
         await self._session.merge(summary_row(task_id, content))
         await self._session.flush()
 
+    async def save_chunks(self, task_id: str, content: dict[str, Any]) -> None:
+        rows = chunk_rows(task_id, content)
+        document_ids = {row.document_id for row in rows}
+        if document_ids:
+            await self._session.execute(delete(TextChunkRow).where(TextChunkRow.document_id.in_(document_ids)))
+        for row in rows:
+            self._session.add(row)
+        await self._session.flush()
+
     async def save_terms(self, task_id: str, content: dict[str, Any]) -> None:
+        await self._session.execute(delete(TermRow).where(TermRow.task_id == task_id))
         for row in term_rows(task_id, content):
-            await self._session.merge(row)
+            self._session.add(row)
         await self._session.flush()
 
     async def save_quiz(self, task_id: str, content: dict[str, Any]) -> None:
@@ -105,6 +115,7 @@ class ResultRepo:
         await self._session.flush()
 
     async def save_citations(self, task_id: str, content: dict[str, Any]) -> None:
+        await self._session.execute(delete(CitationRow).where(CitationRow.task_id == task_id))
         for row in citation_rows(task_id, content):
-            await self._session.merge(row)
+            self._session.add(row)
         await self._session.flush()

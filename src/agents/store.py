@@ -45,7 +45,9 @@ class DbTaskStore:
     async def save_result(self, task_id: str, operation: Operation, content: dict[str, Any]) -> None:
         async with self._session_factory() as session:
             repo = ResultRepo(session)
-            if operation == Operation.F3_SUMMARIZE:
+            if operation in (Operation.F1_TRANSCRIBE, Operation.F2_OCR):
+                await repo.save_chunks(task_id, content)
+            elif operation == Operation.F3_SUMMARIZE:
                 await repo.save_summary(task_id, content)
             elif operation == Operation.F5_TERMS:
                 await repo.save_terms(task_id, content)
@@ -54,5 +56,5 @@ class DbTaskStore:
             elif operation == Operation.F6_RECOMMEND:
                 await repo.save_citations(task_id, content)
             else:
-                return  # F1/F2 chunks are not persisted in M4.1
+                return
             await session.commit()

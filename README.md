@@ -136,7 +136,7 @@ curl -X POST http://localhost:8000/api/tasks \
 # → {"task_id": "task-<id>", "status": "planning"}
 
 curl http://localhost:8000/api/tasks/task-<id>
-# → {"task_id": "...", "status": "done"}
+# → {"task_id": "...", "status": "completed"}
 
 curl http://localhost:8000/api/tasks/task-<id>/result
 ```

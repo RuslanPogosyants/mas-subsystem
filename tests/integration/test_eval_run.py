@@ -58,3 +58,5 @@ async def test_run_writes_markdown_and_json(
     assert out.exists()
     data = json.loads(out.with_suffix(".json").read_text(encoding="utf-8"))
     assert data["task_id"] == "task-eval"
+    assert "quiz_pedagogy" in data["judge"]
+    assert "terms_usefulness" in data["judge"]

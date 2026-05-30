@@ -3,6 +3,8 @@ from src.adapters.transcriber import FakeTranscriberAdapter
 from src.agents.transcriber import TranscriberAgent
 from src.core.messages import Performative, make_message
 
+from tests.support.fake_bus import FakeBus
+
 
 def _request(content: dict[str, object]) -> object:
     return make_message(
@@ -18,7 +20,7 @@ def _request(content: dict[str, object]) -> object:
 
 @pytest.mark.asyncio
 async def test_transcriber_stamps_chunks_with_task_and_document() -> None:
-    agent = TranscriberAgent(bus=None, transcriber=FakeTranscriberAdapter())  # type: ignore[arg-type]
+    agent = TranscriberAgent(bus=FakeBus(), transcriber=FakeTranscriberAdapter())
     reply = await agent.handle(
         _request({"document_id": "doc-task-xyz-0", "file_path": "/x/lecture.mp3", "language": "ru"})
     )
@@ -32,7 +34,7 @@ async def test_transcriber_stamps_chunks_with_task_and_document() -> None:
 
 @pytest.mark.asyncio
 async def test_transcriber_refuses_without_document_id() -> None:
-    agent = TranscriberAgent(bus=None, transcriber=FakeTranscriberAdapter())  # type: ignore[arg-type]
+    agent = TranscriberAgent(bus=FakeBus(), transcriber=FakeTranscriberAdapter())
     reply = await agent.handle(_request({"file_path": "/x/lecture.mp3"}))
     assert reply is not None
     assert reply.performative == Performative.REFUSE

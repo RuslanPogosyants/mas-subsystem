@@ -3,6 +3,8 @@ from src.adapters.ocr import FakeOcrAdapter
 from src.agents.ocr import OcrAgent
 from src.core.messages import Performative, make_message
 
+from tests.support.fake_bus import FakeBus
+
 
 def _ocr_request(content: dict[str, object]) -> object:
     return make_message(
@@ -18,7 +20,7 @@ def _ocr_request(content: dict[str, object]) -> object:
 
 @pytest.mark.asyncio
 async def test_ocr_stamps_chunks_with_task_and_document() -> None:
-    agent = OcrAgent(bus=None, ocr=FakeOcrAdapter())  # type: ignore[arg-type]
+    agent = OcrAgent(bus=FakeBus(), ocr=FakeOcrAdapter())
     reply = await agent.handle(
         _ocr_request({"document_id": "doc-task-xyz-1", "file_path": "/x/p.pdf", "document_type": "pdf"})
     )
@@ -31,6 +33,6 @@ async def test_ocr_stamps_chunks_with_task_and_document() -> None:
 
 @pytest.mark.asyncio
 async def test_ocr_refuses_without_document_id() -> None:
-    agent = OcrAgent(bus=None, ocr=FakeOcrAdapter())  # type: ignore[arg-type]
+    agent = OcrAgent(bus=FakeBus(), ocr=FakeOcrAdapter())
     reply = await agent.handle(_ocr_request({"file_path": "/x/p.pdf", "document_type": "pdf"}))
     assert reply is not None and reply.performative == Performative.REFUSE

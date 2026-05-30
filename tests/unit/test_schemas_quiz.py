@@ -18,6 +18,7 @@ from src.core.schemas import QuizQuestion
         ({"question": "q", "type": "multi_choice", "choices": ["A", "B"], "answer_indices": [0, 1]}, True),
         ({"question": "q", "type": "multi_choice", "choices": ["A", "B"], "answer_indices": []}, False),
         ({"question": "q", "type": "multi_choice", "choices": ["A", "B"], "answer_indices": [2]}, False),
+        ({"question": "  ", "type": "single_choice", "choices": ["A", "B"], "answer_idx": 0}, False),
     ],
 )
 def test_is_well_formed(kwargs: dict, expected: bool) -> None:

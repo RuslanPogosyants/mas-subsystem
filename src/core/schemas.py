@@ -101,11 +101,13 @@ class QuizQuestion(BaseModel):
     source_chunk_id: str | None = None
 
     def is_well_formed(self) -> bool:
-        """True if the question is answerable: open_answer has text; choice types
-        have >= 2 choices and in-range answer index/indices."""
+        """True if the question is answerable: all types require a non-empty stem;
+        choice types also need >= 2 choices and an in-range answer index/indices."""
+        if not self.question.strip():
+            return False
         _min_choices = 2
         if self.type == "open_answer":
-            return bool(self.question.strip())
+            return True
         if len(self.choices) < _min_choices:
             return False
         if self.type == "single_choice":

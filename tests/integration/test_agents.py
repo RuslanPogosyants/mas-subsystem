@@ -110,7 +110,7 @@ class TestOcrAgentRoundTrip:
                 receiver=agent.name,
                 task_id="task-x",
                 conversation_id="conv-x",
-                content={"file_path": "/paper.pdf", "document_type": "pdf"},
+                content={"document_id": "doc-task-x-1", "file_path": "/paper.pdf", "document_type": "pdf"},
                 subtask_id="st-x-F2",
             )
             reply = await _run_agent_until_replied(agent, bus, request, channel="agent.ocr")
@@ -119,6 +119,8 @@ class TestOcrAgentRoundTrip:
             chunks = reply.content["chunks"]
             assert isinstance(chunks, list)
             assert chunks[0]["source_type"] == "pdf_extracted"
+            assert chunks[0]["task_id"] == "task-x"
+            assert chunks[0]["id"] == "chunk-doc-task-x-1-0"
         finally:
             await redis.aclose()
 
@@ -133,7 +135,7 @@ class TestOcrAgentRoundTrip:
                 receiver=agent.name,
                 task_id="task-x",
                 conversation_id="conv-x",
-                content={"file_path": "/x.docx", "document_type": "docx"},
+                content={"document_id": "doc-task-x-0", "file_path": "/x.docx", "document_type": "docx"},
                 subtask_id="st-x-F2",
             )
             reply = await _run_agent_until_replied(agent, bus, request, channel="agent.ocr")

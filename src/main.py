@@ -6,7 +6,7 @@ import asyncio
 import contextlib
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from fastapi import FastAPI
 from redis.asyncio import Redis
@@ -18,7 +18,7 @@ from src.adapters.ocr import FakeOcrAdapter
 from src.adapters.transcriber import FakeTranscriberAdapter
 from src.agents.coordinator import Coordinator
 from src.agents.ocr import OcrAgent
-from src.agents.recommender import RecommenderAgent, load_corpus
+from src.agents.recommender import CorpusEntry, RecommenderAgent, load_corpus
 from src.agents.store import DbTaskStore
 from src.agents.summarizer import SummarizerAgent
 from src.agents.terminology import TerminologyAgent
@@ -64,6 +64,34 @@ def _build_embedding(settings: Settings) -> EmbeddingAdapter:
 
         return SentenceTransformerEmbeddingAdapter(settings.embedding_model)
     return FakeEmbeddingAdapter()
+
+
+_DEMO_PAPERS: Final[tuple[tuple[str, int, str], ...]] = (
+    ("Graph algorithms and data structures", 2021, "https://example.org/graphs"),
+    ("An introduction to machine learning", 2020, "https://example.org/ml"),
+    ("Methods in natural language processing", 2022, "https://example.org/nlp"),
+    ("Information retrieval foundations", 2019, "https://example.org/ir"),
+)
+
+
+async def _demo_corpus(embedding: EmbeddingAdapter) -> list[CorpusEntry]:
+    """A tiny built-in corpus so F6 returns citations without a real corpus.
+
+    Embeddings come from the active embedding adapter, so their dimension always
+    matches the query (fake 16-dim in CI/demo, real model dims otherwise).
+    """
+    vectors = await embedding.encode([title for title, _, _ in _DEMO_PAPERS])
+    return [
+        CorpusEntry(title=title, authors=None, year=year, url=url, embedding=tuple(vector))
+        for (title, year, url), vector in zip(_DEMO_PAPERS, vectors, strict=False)
+    ]
+
+
+async def _build_recommender(bus: RedisStreamBus, settings: Settings) -> RecommenderAgent:
+    """Build F6 with a real corpus when present, else a built-in demo corpus."""
+    embedding = _build_embedding(settings)
+    corpus = load_corpus(settings.corpus_path) or await _demo_corpus(embedding)
+    return RecommenderAgent(bus=bus, embedding=embedding, corpus=corpus)
 
 
 def _agent_timeouts(settings: Settings) -> dict[str, float]:
@@ -116,9 +144,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     test_generator_agent = TestGeneratorAgent(bus=bus, llm=llm)
     terminology_agent = TerminologyAgent(bus=bus, ner=FakeNerAdapter())
-    recommender_agent = RecommenderAgent(
-        bus=bus, embedding=_build_embedding(settings), corpus=load_corpus(settings.corpus_path)
-    )
+    recommender_agent = await _build_recommender(bus, settings)
     agents = [
         transcriber_agent,
         ocr_agent,

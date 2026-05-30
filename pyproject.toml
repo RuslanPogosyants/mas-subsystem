@@ -123,4 +123,5 @@ markers = [
     "slow: tests requiring real ML models (excluded from CI)",
     "integration: tests requiring Redis/Postgres via testcontainers",
     "e2e: end-to-end acceptance tests",
+    "perf: performance and throughput guards",
 ]

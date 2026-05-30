@@ -31,6 +31,7 @@ repos:
           - "redis>=5.2"
           - "httpx>=0.27"
           - "loguru>=0.7"
+          - "prometheus-client>=0.21"
         args: [--config-file=pyproject.toml]
         files: ^src/
 

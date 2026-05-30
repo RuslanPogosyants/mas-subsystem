@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Final
 
@@ -12,6 +13,7 @@ from loguru import logger
 from src.core.bus import COORDINATOR_INBOX
 from src.core.idempotency import IdempotentReceiver
 from src.core.messages import Message, Performative, make_message
+from src.core.metrics import AGENT_HANDLE_SECONDS
 
 if TYPE_CHECKING:
     from src.core.bus import RedisStreamBus
@@ -76,11 +78,20 @@ class AgentBase(ABC):
             return self._refuse(message, reason="force_refuse flag enabled")
         if self._is_flagged("HANG_AGENT"):
             await asyncio.sleep(_HANG_SECONDS)
+        start = time.perf_counter()
+        outcome = "error"
         try:
-            return await self.handle(message)
+            reply = await self.handle(message)
+            outcome = "refuse" if reply is not None and reply.performative == Performative.REFUSE else "inform"
+            return reply
         except (OSError, ConnectionError, TimeoutError, RuntimeError) as error:
             logger.exception(f"agent {self.name} adapter error: {error}")
+            outcome = "refuse"
             return self._refuse(message, reason=f"adapter error: {error.__class__.__name__}")
+        finally:
+            AGENT_HANDLE_SECONDS.labels(agent=self.name, operation=self._operation.value, outcome=outcome).observe(
+                time.perf_counter() - start
+            )
 
     def _is_flagged(self, env_var: str) -> bool:
         return os.environ.get(env_var, "") == self._operation.value

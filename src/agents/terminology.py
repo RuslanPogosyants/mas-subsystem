@@ -25,6 +25,8 @@ if TYPE_CHECKING:
 _DATA_DIR: Final[Path] = Path(__file__).resolve().parents[2] / "data"
 _DEFAULT_TOP_N: Final[int] = 10
 _MIN_LEMMA_LEN: Final[int] = 2
+# _MIN_SHARED_PREFIX > 3 favours precision over recall: short-root inflections
+# (дом/дома, код/кода) are NOT merged, avoiding collisions on 3-char roots.
 _MIN_SHARED_PREFIX: Final[int] = 4  # minimum shared-prefix length for near-duplicate last-token check
 _MAX_INFLECTION_SUFFIX: Final[int] = 2  # maximum extra trailing characters in a prefix-relationship inflection
 

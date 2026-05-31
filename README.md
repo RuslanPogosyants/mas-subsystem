@@ -49,15 +49,15 @@ All agents subclass `AgentBase`: Redis Streams consumer-group loop, idempotent m
 
 ### ML adapters
 
-Every model sits behind a Protocol with a deterministic in-process **Fake** (used by default and in CI) and a lazily-imported real backend. No GPU, model weights, or API keys are needed to run or test the system in default mode.
+Every model sits behind a Protocol with a deterministic in-process **Fake** and a lazily-imported real backend. The system defaults to the **real** backends at runtime (Whisper/PyMuPDF/spaCy); the Fakes are the test-only mechanism. To run without model weights or a GPU, set the three env vars to `fake` (see the Configuration table below). The LLM (GigaChat) uses the real adapter when `GIGACHAT_CREDENTIALS` is set and falls back to the Fake automatically when unset. The test suite always runs fully offline — fakes are forced in `tests/conftest.py`.
 
-| Backend | Agent | Real implementation | Env flag |
-|---------|-------|---------------------|----------|
-| faster-whisper | F1 | `WhisperTranscriberAdapter` | `TRANSCRIBER_BACKEND=whisper` |
-| PyMuPDF + EasyOCR | F2 | `PymupdfOcrAdapter` | `OCR_BACKEND=pymupdf` |
-| GigaChat | F3, F4 | `GigaChatAdapter` | `GIGACHAT_CREDENTIALS=<token>` |
-| spaCy `ru_core_news_lg` | F5 | `SpacyNerAdapter` | `NER_BACKEND=spacy` |
-| sentence-transformers `multilingual-e5-base` | F6 | `SentenceTransformerEmbeddingAdapter` | corpus files present |
+| Backend | Agent | Real implementation | Default | Fake env override |
+|---------|-------|---------------------|---------|-------------------|
+| faster-whisper | F1 | `WhisperTranscriberAdapter` | **real** | `TRANSCRIBER_BACKEND=fake` |
+| PyMuPDF + EasyOCR | F2 | `PymupdfOcrAdapter` | **real** | `OCR_BACKEND=fake` |
+| GigaChat | F3, F4 | `GigaChatAdapter` | real if credentials set | `GIGACHAT_CREDENTIALS=` (unset) |
+| spaCy `ru_core_news_lg` | F5 | `SpacyNerAdapter` | **real** | `NER_BACKEND=fake` |
+| sentence-transformers `multilingual-e5-base` | F6 | `SentenceTransformerEmbeddingAdapter` | real if corpus present | no corpus files |
 
 ---
 
@@ -92,13 +92,13 @@ uv venv --python 3.13
 
 ### 2. Install dependencies
 
-Base install (uses Fake ML adapters — no model weights needed):
+Base install (library and API code only; to run real ML tasks install the `ml` extra):
 
 ```bash
 uv pip install -e ".[dev]"
 ```
 
-With real ML backends:
+With real ML backends (Whisper, PyMuPDF/EasyOCR, spaCy, sentence-transformers):
 
 ```bash
 uv pip install -e ".[dev,ml]"
@@ -170,9 +170,9 @@ All settings are loaded from environment variables or a `.env` file (pydantic-se
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis connection |
 | `GIGACHAT_CREDENTIALS` | _(empty)_ | Bearer token; unset → Fake LLM |
 | `GIGACHAT_MODEL` | `GigaChat-Pro` | Model name for F3/F4 |
-| `TRANSCRIBER_BACKEND` | `fake` | `fake` or `whisper` |
-| `OCR_BACKEND` | `fake` | `fake` or `pymupdf` |
-| `NER_BACKEND` | `fake` | `fake` or `spacy` |
+| `TRANSCRIBER_BACKEND` | `whisper` | `whisper` (real, default) or `fake` (no model weights) |
+| `OCR_BACKEND` | `pymupdf` | `pymupdf` (real, default) or `fake` (no model weights) |
+| `NER_BACKEND` | `spacy` | `spacy` (real, default) or `fake` (no model weights) |
 | `CORPUS_PATH` | `corpus` | Directory with `papers.jsonl` + `papers.npy` for F6 |
 | `DEMO_MODE` | `false` | When `true`, F6 falls back to a built-in demo corpus if no real corpus is present; off by default so F6 refuses gracefully in production |
 | `COORD_TIMEOUT_TRANSCRIBER` | `600` | Per-agent deadline (seconds) |
@@ -182,7 +182,7 @@ All settings are loaded from environment variables or a `.env` file (pydantic-se
 ## Testing
 
 ```bash
-# Full suite (261 tests)
+# Full suite
 pytest
 
 # With coverage

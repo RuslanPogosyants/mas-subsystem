@@ -23,6 +23,16 @@ def _force_fake_llm(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _force_fake_backends(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Runtime defaults are the real ML backends; tests force the in-process Fakes
+    so the suite needs no GPU, model weights, or network. Tests that want a real
+    backend override these via their own monkeypatch."""
+    monkeypatch.setenv("TRANSCRIBER_BACKEND", "fake")
+    monkeypatch.setenv("OCR_BACKEND", "fake")
+    monkeypatch.setenv("NER_BACKEND", "fake")
+
+
+@pytest.fixture(autouse=True)
 def _enable_demo_corpus(monkeypatch: pytest.MonkeyPatch) -> None:
     """Production defaults demo_mode off, so F6 refuses without a real corpus. The
     test suite exercises the full F6 path with the built-in demo corpus, so enable

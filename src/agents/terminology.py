@@ -25,6 +25,83 @@ if TYPE_CHECKING:
 _DATA_DIR: Final[Path] = Path(__file__).resolve().parents[2] / "data"
 _DEFAULT_TOP_N: Final[int] = 10
 _MIN_LEMMA_LEN: Final[int] = 2
+_MIN_SHARED_PREFIX: Final[int] = 4  # minimum shared-prefix length for near-duplicate last-token check
+
+
+def _is_noise_lemma(lemma: str) -> bool:
+    """Return True when *lemma* looks like an initials artifact.
+
+    A lemma is considered noise when any whitespace-separated token, after
+    stripping a trailing dot, is a single character — e.g. «и. вот» contains
+    the token «и.» → stripped «и» (len 1) → noise.
+    """
+    for token in lemma.split():
+        stripped = token.rstrip(".")
+        if len(stripped) == 1:
+            return True
+    return False
+
+
+def _are_near_duplicate_lemmas(a: str, b: str) -> bool:
+    """Return True when *a* and *b* should be treated as the same term.
+
+    Conservative rule: same token count, all non-final tokens are identical,
+    and the last tokens either match exactly OR are of the same length and
+    differ ONLY in their final character, with a shared leading prefix of at
+    least _MIN_SHARED_PREFIX characters.
+    """
+    tokens_a = a.split()
+    tokens_b = b.split()
+    if len(tokens_a) != len(tokens_b):
+        return False
+    if tokens_a[:-1] != tokens_b[:-1]:
+        return False
+    last_a, last_b = tokens_a[-1], tokens_b[-1]
+    if last_a == last_b:
+        return True
+    # Differ only in final character: same length, identical up to last char.
+    if len(last_a) != len(last_b):
+        return False
+    shared_prefix = last_a[:-1]
+    return shared_prefix == last_b[:-1] and len(shared_prefix) >= _MIN_SHARED_PREFIX
+
+
+_CandidateMaps = tuple[dict[str, int], dict[str, set[str]], dict[str, tuple[str, str, str]]]
+
+
+def _merge_near_duplicates(
+    frequency: dict[str, int],
+    chunk_ids: dict[str, set[str]],
+    first_seen: dict[str, tuple[str, str, str]],
+) -> _CandidateMaps:
+    """Group near-duplicate lemmas and return merged frequency/chunk_id/first_seen maps.
+
+    The canonical representative for each group is the lemma with the highest
+    frequency; ties are broken by lexicographic order (smaller wins).
+    """
+    canonical: dict[str, str] = {}
+    all_lemmas = list(frequency)
+    for i, lemma_a in enumerate(all_lemmas):
+        if lemma_a in canonical:
+            continue
+        canonical[lemma_a] = lemma_a
+        for lemma_b in all_lemmas[i + 1 :]:
+            if lemma_b not in canonical and _are_near_duplicate_lemmas(lemma_a, lemma_b):
+                canonical[lemma_b] = lemma_a
+
+    merged_freq: dict[str, int] = {}
+    merged_cids: dict[str, set[str]] = {}
+    merged_fs: dict[str, tuple[str, str, str]] = {}
+    for lemma, rep in canonical.items():
+        merged_freq[rep] = merged_freq.get(rep, 0) + frequency[lemma]
+        merged_cids.setdefault(rep, set()).update(chunk_ids[lemma])
+        if (
+            rep not in merged_fs
+            or frequency[lemma] > frequency[rep]
+            or (frequency[lemma] == frequency[rep] and lemma < rep)
+        ):
+            merged_fs[rep] = first_seen[lemma]
+    return merged_freq, merged_cids, merged_fs
 
 
 def load_stopwords() -> set[str]:
@@ -88,22 +165,29 @@ class TerminologyAgent(AgentBase):
                 lemma = candidate.lemma.lower().strip()
                 if len(lemma) < _MIN_LEMMA_LEN or lemma in self._stopwords:
                     continue
+                if _is_noise_lemma(lemma):
+                    continue
                 frequency[lemma] = frequency.get(lemma, 0) + 1
                 chunk_ids.setdefault(lemma, set()).add(chunk_id)
                 if lemma not in first_seen:
                     first_seen[lemma] = (candidate.text, candidate.label, chunk_id)
+
+        merged_frequency, merged_chunk_ids, merged_first_seen = _merge_near_duplicates(frequency, chunk_ids, first_seen)
         scored = sorted(
-            frequency,
-            key=lambda lemma: (-frequency[lemma] * math.log(1 + n_chunks / len(chunk_ids[lemma])), lemma),
+            merged_frequency,
+            key=lambda lemma: (
+                -merged_frequency[lemma] * math.log(1 + n_chunks / len(merged_chunk_ids[lemma])),
+                lemma,
+            ),
         )
         terms: list[Term] = []
         for lemma in scored[:top_n]:
-            surface, label, chunk_id = first_seen[lemma]
+            surface, label, chunk_id = merged_first_seen[lemma]
             terms.append(
                 Term(
                     term=surface,
                     lemma=lemma,
-                    frequency=frequency[lemma],
+                    frequency=merged_frequency[lemma],
                     category=self._categorize(lemma, label),
                     context=None,
                     source_chunk_id=chunk_id,

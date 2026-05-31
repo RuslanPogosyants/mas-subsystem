@@ -81,3 +81,75 @@ async def test_informs_empty_when_all_filtered() -> None:
     reply = await agent.handle(_request({"chunks": [_chunk("c1", "и в")]}))
     assert reply is not None and reply.performative == Performative.INFORM
     assert reply.content["terms"] == []
+
+
+# ---------------------------------------------------------------------------
+# NER noise filtering
+# ---------------------------------------------------------------------------
+
+
+async def test_ner_noise_initial_dropped() -> None:
+    """A candidate whose lemma contains a single-char initial token is dropped."""
+    candidates = [
+        TermCandidate(text="И. Вот", lemma="и. вот", label="PER"),
+        TermCandidate(text="граф", lemma="граф"),
+    ]
+    agent = _agent(candidates)
+    reply = await agent.handle(_request({"chunks": [_chunk("c1", "И. Вот граф")]}))
+    assert reply is not None and reply.performative == Performative.INFORM
+    terms = [Term.model_validate(item) for item in reply.content["terms"]]
+    lemmas = [t.lemma for t in terms]
+    assert "и. вот" not in lemmas
+    assert "граф" in lemmas
+
+
+# ---------------------------------------------------------------------------
+# Near-duplicate merging
+# ---------------------------------------------------------------------------
+
+
+async def test_near_dup_merged_into_one_term() -> None:
+    """Two lemmas that differ only in the final character of the last token are merged."""
+    candidates = [
+        TermCandidate(text="двойные кавычки", lemma="двойной кавычки"),
+        TermCandidate(text="двойные кавычки", lemma="двойной кавычки"),
+        TermCandidate(text="двойных кавычек", lemma="двойной кавычка"),
+    ]
+    agent = _agent(candidates)
+    reply = await agent.handle(_request({"chunks": [_chunk("c1", "x")]}))
+    assert reply is not None and reply.performative == Performative.INFORM
+    terms = [Term.model_validate(item) for item in reply.content["terms"]]
+    # Only one term for the concept (merging near-dups)
+    assert len(terms) == 1
+    # Frequency must be summed (2 + 1 = 3)
+    assert terms[0].frequency == 3
+
+
+async def test_distinct_concepts_not_merged() -> None:
+    """Two terms differing in a non-final token must NOT be merged."""
+    candidates = [
+        TermCandidate(text="целые числа", lemma="целый число"),
+        TermCandidate(text="вещественные числа", lemma="вещественный число"),
+    ]
+    agent = _agent(candidates)
+    reply = await agent.handle(_request({"chunks": [_chunk("c1", "x")]}))
+    assert reply is not None and reply.performative == Performative.INFORM
+    terms = [Term.model_validate(item) for item in reply.content["terms"]]
+    lemmas = [t.lemma for t in terms]
+    assert "целый число" in lemmas
+    assert "вещественный число" in lemmas
+
+
+async def test_single_token_prefix_not_merged() -> None:
+    """Single-token lemmas that share fewer than 4 chars of prefix are NOT merged."""
+    candidates = [
+        TermCandidate(text="строка", lemma="строка"),
+        TermCandidate(text="строфа", lemma="строфа"),
+    ]
+    agent = _agent(candidates)
+    reply = await agent.handle(_request({"chunks": [_chunk("c1", "x")]}))
+    assert reply is not None and reply.performative == Performative.INFORM
+    terms = [Term.model_validate(item) for item in reply.content["terms"]]
+    lemmas = [t.lemma for t in terms]
+    assert "строка" in lemmas
+    assert "строфа" in lemmas

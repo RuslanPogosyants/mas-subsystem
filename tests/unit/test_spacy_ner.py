@@ -86,6 +86,61 @@ class TestModelSelection:
 
 
 # ---------------------------------------------------------------------------
+# Model fallback when the preferred model is not installed
+# ---------------------------------------------------------------------------
+
+
+@_requires_spacy
+class TestModelFallback:
+    @pytest.mark.asyncio
+    async def test_missing_en_model_falls_back_to_ru(self) -> None:
+        fake_ru = _make_fake_nlp()
+        calls: list[str] = []
+
+        def _fake_load(name: str) -> Any:
+            calls.append(name)
+            if name == "en_core_web_sm":
+                raise OSError("E050 model not found")
+            return fake_ru
+
+        with patch("spacy.load", side_effect=_fake_load):
+            adapter = SpacyNerAdapter(model="ru_core_news_lg", en_model="en_core_web_sm")
+            # English text prefers en_core_web_sm; missing -> falls back to the ru model.
+            await adapter.extract("Graph algorithm data structure")
+        assert calls == ["en_core_web_sm", "ru_core_news_lg"]
+
+    @pytest.mark.asyncio
+    async def test_both_models_missing_reraises(self) -> None:
+        def _fake_load(name: str) -> Any:
+            raise OSError("E050 model not found")
+
+        with patch("spacy.load", side_effect=_fake_load):
+            adapter = SpacyNerAdapter(model="ru_core_news_lg", en_model="en_core_web_sm")
+            with pytest.raises(OSError, match="E050"):
+                await adapter.extract("Graph algorithm data structure")
+
+    @pytest.mark.asyncio
+    async def test_fallback_does_not_reload_shared_model(self) -> None:
+        # Regression: after EN falls back to the RU model, a subsequent RU request
+        # must reuse the already-loaded RU pipeline, not load it a second time.
+        fake_ru = _make_fake_nlp()
+        calls: list[str] = []
+
+        def _fake_load(name: str) -> Any:
+            calls.append(name)
+            if name == "en_core_web_sm":
+                raise OSError("E050 model not found")
+            return fake_ru
+
+        with patch("spacy.load", side_effect=_fake_load):
+            adapter = SpacyNerAdapter(model="ru_core_news_lg", en_model="en_core_web_sm")
+            await adapter.extract("Graph algorithm data structure")  # en -> fallback to ru
+            await adapter.extract("Граф алгоритм структура данных")  # ru -> reuse cached
+        # ru_core_news_lg loaded exactly once despite serving both languages.
+        assert calls == ["en_core_web_sm", "ru_core_news_lg"]
+
+
+# ---------------------------------------------------------------------------
 # Pipeline caching
 # ---------------------------------------------------------------------------
 

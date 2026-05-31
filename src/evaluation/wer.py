@@ -73,6 +73,14 @@ def corpus_wer(pairs: list[tuple[str, str]]) -> float:
     This is the standard corpus WER and differs from the mean of per-utterance
     WERs because it weights each utterance by its reference length.
 
+    Pairs with an empty reference cannot be passed to jiwer (it rejects empty
+    references), but a non-empty hypothesis over an empty reference is a real
+    insertion error (e.g. an ASR model hallucinating words over silence). Such
+    insertions are added to the numerator (0 reference words → 0 to the
+    denominator) so they are not silently hidden. The per-utterance
+    ``word_error_rate`` already returns 1.0 for that case; this keeps the corpus
+    aggregate consistent.
+
     Returns 0.0 for an empty list of pairs.
     """
     if not pairs:
@@ -81,14 +89,16 @@ def corpus_wer(pairs: list[tuple[str, str]]) -> float:
     refs = [normalize_text(ref) for ref, _ in pairs]
     hyps = [normalize_text(hyp) for _, hyp in pairs]
 
-    # Filter out pairs where the reference is empty to avoid division by zero
-    # in jiwer's per-utterance calculation; empty-ref pairs contribute 0 edits
-    # and 0 reference words, so they do not affect the corpus aggregate.
-    filtered = [(r, h) for r, h in zip(refs, hyps, strict=True) if r]
-    if not filtered:
-        # All references empty: check if any hypothesis is non-empty.
-        all_hyps_empty = all(not h for _, h in zip(refs, hyps, strict=True))
-        return _EMPTY_WER_BOTH_EMPTY if all_hyps_empty else _EMPTY_WER_IF_REF_EMPTY_HYP_NONEMPTY
+    # Insertions over empty references: every hypothesis word is a spurious insertion.
+    empty_ref_insertions = sum(len(h.split()) for r, h in zip(refs, hyps, strict=True) if not r)
 
-    f_refs, f_hyps = zip(*filtered, strict=True)
-    return float(jiwer.wer(list(f_refs), list(f_hyps)))
+    non_empty = [(r, h) for r, h in zip(refs, hyps, strict=True) if r]
+    if not non_empty:
+        # No reference words anywhere: 0.0 if everything is empty, else all-insertion.
+        return _EMPTY_WER_BOTH_EMPTY if empty_ref_insertions == 0 else _EMPTY_WER_IF_REF_EMPTY_HYP_NONEMPTY
+
+    f_refs, f_hyps = zip(*non_empty, strict=True)
+    out = jiwer.process_words(list(f_refs), list(f_hyps))
+    edits = out.substitutions + out.deletions + out.insertions + empty_ref_insertions
+    reference_words = out.substitutions + out.deletions + out.hits
+    return float(edits / reference_words)

@@ -1,0 +1,260 @@
+{
+  "dataset": "google/fleurs ru_ru test (first 50, deterministic)",
+  "n": 50,
+  "model": "Whisper large-v3, int8_float16, CUDA, vad_filter+batched",
+  "corpus_wer": 0.052,
+  "mean_wer": 0.057,
+  "median_wer": 0.04,
+  "per_sample": [
+    {
+      "i": 0,
+      "wer": 0.0,
+      "ref_words": 21
+    },
+    {
+      "i": 1,
+      "wer": 0.0,
+      "ref_words": 14
+    },
+    {
+      "i": 2,
+      "wer": 0.0,
+      "ref_words": 10
+    },
+    {
+      "i": 3,
+      "wer": 0.0,
+      "ref_words": 17
+    },
+    {
+      "i": 4,
+      "wer": 0.0,
+      "ref_words": 26
+    },
+    {
+      "i": 5,
+      "wer": 0.1,
+      "ref_words": 19
+    },
+    {
+      "i": 6,
+      "wer": 0.0833,
+      "ref_words": 12
+    },
+    {
+      "i": 7,
+      "wer": 0.0789,
+      "ref_words": 37
+    },
+    {
+      "i": 8,
+      "wer": 0.04,
+      "ref_words": 24
+    },
+    {
+      "i": 9,
+      "wer": 0.0,
+      "ref_words": 11
+    },
+    {
+      "i": 10,
+      "wer": 0.0588,
+      "ref_words": 17
+    },
+    {
+      "i": 11,
+      "wer": 0.0938,
+      "ref_words": 32
+    },
+    {
+      "i": 12,
+      "wer": 0.0909,
+      "ref_words": 11
+    },
+    {
+      "i": 13,
+      "wer": 0.2353,
+      "ref_words": 17
+    },
+    {
+      "i": 14,
+      "wer": 0.04,
+      "ref_words": 24
+    },
+    {
+      "i": 15,
+      "wer": 0.0,
+      "ref_words": 15
+    },
+    {
+      "i": 16,
+      "wer": 0.1,
+      "ref_words": 17
+    },
+    {
+      "i": 17,
+      "wer": 0.0526,
+      "ref_words": 19
+    },
+    {
+      "i": 18,
+      "wer": 0.0,
+      "ref_words": 15
+    },
+    {
+      "i": 19,
+      "wer": 0.0435,
+      "ref_words": 22
+    },
+    {
+      "i": 20,
+      "wer": 0.0,
+      "ref_words": 19
+    },
+    {
+      "i": 21,
+      "wer": 0.4615,
+      "ref_words": 13
+    },
+    {
+      "i": 22,
+      "wer": 0.0,
+      "ref_words": 13
+    },
+    {
+      "i": 23,
+      "wer": 0.0667,
+      "ref_words": 15
+    },
+    {
+      "i": 24,
+      "wer": 0.0,
+      "ref_words": 26
+    },
+    {
+      "i": 25,
+      "wer": 0.2222,
+      "ref_words": 18
+    },
+    {
+      "i": 26,
+      "wer": 0.1333,
+      "ref_words": 13
+    },
+    {
+      "i": 27,
+      "wer": 0.0303,
+      "ref_words": 32
+    },
+    {
+      "i": 28,
+      "wer": 0.0435,
+      "ref_words": 23
+    },
+    {
+      "i": 29,
+      "wer": 0.0,
+      "ref_words": 51
+    },
+    {
+      "i": 30,
+      "wer": 0.0476,
+      "ref_words": 21
+    },
+    {
+      "i": 31,
+      "wer": 0.0,
+      "ref_words": 33
+    },
+    {
+      "i": 32,
+      "wer": 0.0833,
+      "ref_words": 11
+    },
+    {
+      "i": 33,
+      "wer": 0.0,
+      "ref_words": 14
+    },
+    {
+      "i": 34,
+      "wer": 0.125,
+      "ref_words": 24
+    },
+    {
+      "i": 35,
+      "wer": 0.1053,
+      "ref_words": 19
+    },
+    {
+      "i": 36,
+      "wer": 0.0,
+      "ref_words": 26
+    },
+    {
+      "i": 37,
+      "wer": 0.0,
+      "ref_words": 14
+    },
+    {
+      "i": 38,
+      "wer": 0.0,
+      "ref_words": 19
+    },
+    {
+      "i": 39,
+      "wer": 0.0645,
+      "ref_words": 32
+    },
+    {
+      "i": 40,
+      "wer": 0.0,
+      "ref_words": 33
+    },
+    {
+      "i": 41,
+      "wer": 0.0,
+      "ref_words": 15
+    },
+    {
+      "i": 42,
+      "wer": 0.1053,
+      "ref_words": 19
+    },
+    {
+      "i": 43,
+      "wer": 0.1111,
+      "ref_words": 18
+    },
+    {
+      "i": 44,
+      "wer": 0.15,
+      "ref_words": 17
+    },
+    {
+      "i": 45,
+      "wer": 0.0833,
+      "ref_words": 34
+    },
+    {
+      "i": 46,
+      "wer": 0.0,
+      "ref_words": 16
+    },
+    {
+      "i": 47,
+      "wer": 0.0,
+      "ref_words": 15
+    },
+    {
+      "i": 48,
+      "wer": 0.0,
+      "ref_words": 33
+    },
+    {
+      "i": 49,
+      "wer": 0.0,
+      "ref_words": 22
+    }
+  ]
+}

@@ -4,15 +4,32 @@ Computes ROUGE-1, ROUGE-2, and ROUGE-L F-measures via the ``rouge_score``
 library with ``use_stemmer=False`` to avoid the English-only Porter stemmer
 mangling Russian tokens.
 
+The library's default tokenizer lowercases and then strips every character
+outside ``[a-z0-9]`` — which deletes all Cyrillic, yielding empty token sets
+and ROUGE 0.0 for Russian text. We pass a Unicode-aware tokenizer (``\\w+`` with
+the ``re.UNICODE`` flag) so Cyrillic word characters survive.
+
 All returned float values are rounded to 4 decimal places.
 """
 
 from __future__ import annotations
 
+import re
+
 from rouge_score import rouge_scorer
 
 _METRICS = ["rouge1", "rouge2", "rougeL"]
-_SCORER = rouge_scorer.RougeScorer(_METRICS, use_stemmer=False)
+_WORD_RE = re.compile(r"\w+", re.UNICODE)
+
+
+class _UnicodeTokenizer:
+    """Whitespace/punctuation tokenizer that keeps Cyrillic (and any Unicode word char)."""
+
+    def tokenize(self, text: str) -> list[str]:
+        return _WORD_RE.findall(text.lower())
+
+
+_SCORER = rouge_scorer.RougeScorer(_METRICS, use_stemmer=False, tokenizer=_UnicodeTokenizer())
 
 
 def rouge_scores(reference: str, hypothesis: str) -> dict[str, float]:
@@ -27,7 +44,9 @@ def rouge_scores(reference: str, hypothesis: str) -> dict[str, float]:
         rounded to 4 decimal places.
     """
     raw = _SCORER.score(reference, hypothesis)
-    return {metric: round(raw[metric].fmeasure, 4) for metric in _METRICS}
+    # rouge-score's LCS scorer returns int 0 (not 0.0) for no overlap; coerce to
+    # float so the dict[str, float] contract holds on every path.
+    return {metric: round(float(raw[metric].fmeasure), 4) for metric in _METRICS}
 
 
 def corpus_rouge(pairs: list[tuple[str, str]]) -> dict[str, float]:

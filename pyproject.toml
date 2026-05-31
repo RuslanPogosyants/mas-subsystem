@@ -49,6 +49,12 @@ dev = [
     "jiwer>=4.0,<5.0",
     "rouge-score>=0.1.2",
 ]
+# Empirical evaluation on public RU benchmarks (experiments/). Pulls HuggingFace
+# datasets; the metric libraries (jiwer, rouge-score) live in `dev`, and the real
+# adapters (whisper, spacy, gigachat) live in `ml`.
+eval = [
+    "datasets>=3.0,<5.0",
+]
 
 [build-system]
 requires = ["hatchling"]

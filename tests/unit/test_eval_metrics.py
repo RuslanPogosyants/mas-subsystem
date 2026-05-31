@@ -97,6 +97,24 @@ def test_corpus_wer_empty_list_returns_zero() -> None:
     assert corpus_wer([]) == 0.0
 
 
+def test_corpus_wer_counts_insertions_over_empty_reference() -> None:
+    # Regression: empty-ref pairs must not be silently dropped. A model that
+    # hallucinates words over silence (empty reference) commits insertion errors.
+    # Pair 1: "" vs "a b c" -> 3 insertions / 0 ref words
+    # Pair 2: "x y" vs "x y" -> 0 edits / 2 ref words
+    # Corpus WER: (3 + 0) / (0 + 2) = 1.5
+    pairs = [("", "a b c"), ("x y", "x y")]
+    assert corpus_wer(pairs) == pytest.approx(1.5)
+
+
+def test_corpus_wer_all_empty_refs_with_hyps_is_one() -> None:
+    assert corpus_wer([("", "a b"), ("", "c")]) == pytest.approx(1.0)
+
+
+def test_corpus_wer_all_empty_is_zero() -> None:
+    assert corpus_wer([("", ""), ("", "")]) == 0.0
+
+
 # ---------------------------------------------------------------------------
 # rouge_scores
 # ---------------------------------------------------------------------------
@@ -120,7 +138,17 @@ def test_rouge_disjoint_hypothesis_is_zero() -> None:
 def test_rouge_partial_overlap_between_zero_and_one() -> None:
     scores = rouge_scores("a b c d e", "a b c x y")
     assert 0.0 < scores["rouge1"] < 1.0
+    assert 0.0 < scores["rouge2"] < 1.0
     assert 0.0 < scores["rougeL"] < 1.0
+
+
+def test_rouge_empty_hypothesis_returns_float_zeros() -> None:
+    # rouge-score's LCS scorer returns int 0 for no overlap; rouge_scores must
+    # coerce to float so the dict[str, float] contract holds.
+    scores = rouge_scores("hello world", "")
+    for metric in ("rouge1", "rouge2", "rougeL"):
+        assert scores[metric] == 0.0
+        assert isinstance(scores[metric], float)
 
 
 def test_rouge_keys_present() -> None:
@@ -133,6 +161,21 @@ def test_rouge_values_rounded_to_4dp() -> None:
     for v in scores.values():
         # At most 4 decimal places
         assert round(v, 4) == v
+
+
+def test_rouge_cyrillic_identical_all_ones() -> None:
+    # Regression: rouge_score's default tokenizer strips non-[a-z0-9], deleting
+    # all Cyrillic and yielding ROUGE 0.0. The Unicode tokenizer must keep it.
+    text = "кошка сидела на тёплом ковре у окна"
+    scores = rouge_scores(text, text)
+    assert scores["rouge1"] == pytest.approx(1.0)
+    assert scores["rougeL"] == pytest.approx(1.0)
+
+
+def test_rouge_cyrillic_partial_overlap_nonzero() -> None:
+    scores = rouge_scores("кошка сидела на ковре", "кошка лежала на ковре")
+    assert scores["rouge1"] > 0.0
+    assert scores["rougeL"] > 0.0
 
 
 # ---------------------------------------------------------------------------

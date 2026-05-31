@@ -8,8 +8,12 @@ NER entities and adjective+noun bigrams become term candidates.
 The model is chosen by the script of the input text: if Latin letters strictly
 outnumber Cyrillic letters the English model (`en_core_web_sm` by default) is
 used; otherwise the Russian model (`ru_core_news_lg` by default).  If the
-chosen model is absent, the lazy `spacy.load` raises ``OSError``, which
-``AgentBase._safe_handle`` turns into a graceful refuse.
+preferred model is absent, the adapter falls back to the other configured model
+(logging a warning) so the operation degrades instead of failing — e.g. an
+English document is still processed by the Russian pipeline when the English
+model is not installed.  Only if neither model can be loaded does the lazy
+`spacy.load` raise ``OSError``, which ``AgentBase._safe_handle`` turns into a
+graceful refuse.
 
 Loaded pipelines are cached by language to avoid repeated model loading.
 
@@ -57,7 +61,8 @@ class SpacyNerAdapter:
     def __init__(self, model: str = "ru_core_news_lg", en_model: str = "en_core_web_sm") -> None:
         self._model_name = model
         self._en_model_name = en_model
-        self._pipelines: dict[str, Any] = {}
+        self._pipelines: dict[str, Any] = {}  # language -> pipeline
+        self._by_model: dict[str, Any] = {}  # model name -> pipeline (shared across languages)
 
     @staticmethod
     def _select_language(text: str) -> str:
@@ -73,11 +78,37 @@ class SpacyNerAdapter:
 
     def _ensure_nlp(self, language: str) -> Any:
         if language not in self._pipelines:
-            import spacy  # lazy: optional ml dependency
-
-            model_name = self._en_model_name if language == _LANG_EN else self._model_name
-            self._pipelines[language] = spacy.load(model_name)
+            preferred = self._en_model_name if language == _LANG_EN else self._model_name
+            fallback = self._model_name if language == _LANG_EN else self._en_model_name
+            self._pipelines[language] = self._load_model(preferred, fallback)
         return self._pipelines[language]
+
+    def _load_model(self, preferred: str, fallback: str) -> Any:
+        """Load ``preferred``; on OSError fall back to ``fallback``. Pipelines are
+        cached by model name so two languages resolving to the same model (e.g. an
+        English document handled by the Russian model after fallback) share one
+        loaded instance instead of loading the heavy model twice."""
+        import spacy  # lazy: optional ml dependency
+
+        if preferred in self._by_model:
+            return self._by_model[preferred]
+        try:
+            self._by_model[preferred] = spacy.load(preferred)
+            return self._by_model[preferred]
+        except OSError:
+            if fallback == preferred:
+                raise
+            from loguru import logger
+
+            logger.warning(
+                "spaCy model '{}' unavailable; falling back to '{}'",
+                preferred,
+                fallback,
+            )
+            if fallback in self._by_model:
+                return self._by_model[fallback]
+            self._by_model[fallback] = spacy.load(fallback)  # may raise OSError -> graceful refuse
+            return self._by_model[fallback]
 
     async def extract(self, text: str) -> list[TermCandidate]:
         language = self._select_language(text)

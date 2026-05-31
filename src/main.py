@@ -242,7 +242,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(
-    title="mas-subsystem",
+    title="mas-research",
     description="Multi-agent subsystem for intelligent processing of educational data",
     version="0.1.0",
     lifespan=lifespan,
@@ -254,7 +254,7 @@ app.include_router(api_router)
 @app.get("/")
 async def root() -> dict[str, str]:
     """Health check and pointer to interactive docs."""
-    return {"service": "mas-subsystem", "docs": "/docs", "status": "ok"}
+    return {"service": "mas-research", "docs": "/docs", "status": "ok"}
 
 
 @app.get("/metrics")

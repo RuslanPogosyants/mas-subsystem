@@ -1,5 +1,5 @@
 [project]
-name = "mas-subsystem"
+name = "mas-research"
 version = "0.1.0"
 description = "Multi-agent subsystem for intelligent processing of student research data"
 requires-python = ">=3.13,<3.14"

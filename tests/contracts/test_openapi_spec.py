@@ -33,5 +33,5 @@ class TestOpenAPIEndpoints:
         response = client.get("/")
         assert response.status_code == 200
         body = response.json()
-        assert body["service"] == "mas-subsystem"
+        assert body["service"] == "mas-research"
         assert body["status"] == "ok"

@@ -1,6 +1,6 @@
-# mas-subsystem
+# mas-research
 
-[![CI](https://github.com/RuslanPogosyants/mas-subsystem/actions/workflows/ci.yml/badge.svg)](https://github.com/RuslanPogosyants/mas-subsystem/actions/workflows/ci.yml)
+[![CI](https://github.com/RuslanPogosyants/mas-research/actions/workflows/ci.yml/badge.svg)](https://github.com/RuslanPogosyants/mas-research/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -96,8 +96,8 @@ Every model sits behind a Protocol with a deterministic in-process **Fake** and 
 ### 1. Clone and create the virtual environment
 
 ```bash
-git clone https://github.com/RuslanPogosyants/mas-subsystem.git
-cd mas-subsystem
+git clone https://github.com/RuslanPogosyants/mas-research.git
+cd mas-research
 uv venv --python 3.13
 ```
 

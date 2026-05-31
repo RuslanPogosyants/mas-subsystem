@@ -24,7 +24,7 @@ def _request(content: dict[str, object]) -> Message:
     )
 
 
-def _summary(text: str = "граф это структура данных") -> dict[str, object]:
+def _summary(text: str = "граф это структура данных, обход вершин и рёбер") -> dict[str, object]:
     return {"summary_id": "sum-1", "sections": [{"type": "thesis", "text": text}], "source_chunk_ids": ["c1"]}
 
 
@@ -269,3 +269,89 @@ async def test_tolerates_numeric_source_chunk_id_and_extra_fields() -> None:
     assert question["type"] == "multi_choice"
     assert question["source_chunk_id"] is None  # bogus int dropped; linkage set internally
     QuizQuestion.model_validate(question)  # canonical schema validates clean
+
+
+# ---------------------------------------------------------------------------
+# Semantic gate (_references_summary) tests
+# ---------------------------------------------------------------------------
+
+
+async def test_gate_drops_orphan_open_question_keeps_grounded_choice() -> None:
+    """An open_answer with no summary tokens is dropped; the grounded single_choice survives."""
+    mixed = json.dumps(
+        {
+            "questions": [
+                {
+                    "question": "Что такое граф?",
+                    "type": "single_choice",
+                    "choices": ["структура данных", "число", "строка"],
+                    "answer_idx": 0,
+                },
+                # «последствия» and «объясните» are not in the summary → orphan
+                {"question": "Объясните возможные последствия.", "type": "open_answer"},
+            ]
+        }
+    )
+    agent = _agent(FakeLlmAdapter(responses=[mixed]))
+    reply = await agent.handle(_request({"summary": _summary()}))
+    assert reply is not None and reply.performative == Performative.INFORM
+    types = [q["type"] for q in reply.content["questions"]]
+    assert types == ["single_choice"]
+
+
+async def test_gate_keeps_grounded_open_question() -> None:
+    """An open_answer whose stem shares a token with the summary is kept."""
+    raw = json.dumps(
+        {
+            "questions": [
+                # «граф» appears in the default summary → grounded
+                {"question": "Что представляет собой граф?", "type": "open_answer"},
+            ]
+        }
+    )
+    agent = _agent(FakeLlmAdapter(responses=[raw]))
+    reply = await agent.handle(_request({"summary": _summary()}))
+    assert reply is not None and reply.performative == Performative.INFORM
+    assert reply.content["questions"][0]["type"] == "open_answer"
+
+
+async def test_gate_all_orphan_open_questions_refuses() -> None:
+    """When every open_answer is context-free and there are no choice questions, refuse."""
+    orphan = json.dumps(
+        {
+            "questions": [
+                {"question": "Объясните возможные последствия.", "type": "open_answer"},
+                {"question": "Опишите суть явления.", "type": "open_answer"},
+            ]
+        }
+    )
+    agent = _agent(FakeLlmAdapter(responses=[orphan]))
+    reply = await agent.handle(_request({"summary": _summary()}))
+    assert reply is not None and reply.performative == Performative.REFUSE
+    assert "grounded" in reply.content["reason"]
+
+
+async def test_gate_choice_questions_always_pass() -> None:
+    """single_choice and multi_choice are never gated, even without summary overlap."""
+    raw = json.dumps(
+        {
+            "questions": [
+                {
+                    "question": "Выберите верный ответ.",
+                    "type": "single_choice",
+                    "choices": ["A", "B", "C"],
+                    "answer_idx": 0,
+                },
+                {
+                    "question": "Отметьте все верные варианты.",
+                    "type": "multi_choice",
+                    "choices": ["X", "Y", "Z"],
+                    "answer_indices": [0, 1],
+                },
+            ]
+        }
+    )
+    agent = _agent(FakeLlmAdapter(responses=[raw]))
+    reply = await agent.handle(_request({"summary": _summary()}))
+    assert reply is not None and reply.performative == Performative.INFORM
+    assert len(reply.content["questions"]) == 2

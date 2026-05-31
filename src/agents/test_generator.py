@@ -8,6 +8,7 @@ is refused; otherwise the agent informs {quiz_id, questions, difficulty}.
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -22,6 +23,7 @@ if TYPE_CHECKING:
     from src.core.messages import Message
 
 _MAX_PARSE_RETRIES: Final[int] = 1
+_MIN_CONTENT_LEN: Final[int] = 4
 _SYSTEM_PROMPT: Final[str] = (
     "Ты составляешь проверочный тест по учебному саммари. Ответь СТРОГО одним "
     'JSON-объектом {"questions": [...]}. Каждый вопрос: {question, type, choices, '
@@ -92,14 +94,36 @@ class TestGeneratorAgent(AgentBase):
         well_formed = [question for question in questions if question.is_well_formed()]
         if not well_formed:
             return self._refuse(message, reason="llm returned no well-formed quiz questions")
+        grounded = [q for q in well_formed if _references_summary(q, summary_text)]
+        if not grounded:
+            return self._refuse(message, reason="llm returned no grounded quiz questions")
         return self._inform(
             message,
             content={
                 "quiz_id": f"quiz-{message.task_id}",
-                "questions": [question.model_dump() for question in well_formed],
+                "questions": [question.model_dump() for question in grounded],
                 "difficulty": difficulty,
             },
         )
+
+
+def _references_summary(question: QuizQuestion, summary_text: str) -> bool:
+    """Return True if *question* is grounded in *summary_text*.
+
+    Only ``open_answer`` questions are gated: choice questions already carry
+    domain context via their choices, so they always pass.  For open_answer,
+    at least one content token (alphanumeric, length >= _MIN_CONTENT_LEN) from
+    the question stem must appear in the summary token set.
+    """
+    if question.type != "open_answer":
+        return True
+    summary_tokens = {
+        token for token in re.findall(r"[a-zа-яё0-9]+", summary_text.lower()) if len(token) >= _MIN_CONTENT_LEN
+    }
+    question_tokens = [
+        token for token in re.findall(r"[a-zа-яё0-9]+", question.question.lower()) if len(token) >= _MIN_CONTENT_LEN
+    ]
+    return any(token in summary_tokens for token in question_tokens)
 
 
 def _dedup_choices(question: QuizQuestion) -> QuizQuestion:

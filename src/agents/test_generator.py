@@ -123,6 +123,9 @@ def _dedup_choices(question: QuizQuestion) -> QuizQuestion:
             remap[old_index] = seen[key]
             new_choices.append(choice)
     new_answer_idx = remap.get(question.answer_idx) if question.answer_idx is not None else None
+    # A multi_choice may lose answer cardinality when two correct options share identical
+    # text: after dedup they map to the same index, shrinking answer_indices. Intended —
+    # identical options cannot both be shown to a student.
     new_answer_indices = (
         sorted({remap[i] for i in question.answer_indices if i in remap})
         if question.answer_indices is not None

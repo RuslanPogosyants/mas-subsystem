@@ -209,6 +209,41 @@ async def test_prompt_contains_quality_guidance() -> None:
     assert "правдоподобн" in prompt_lower
 
 
+async def test_dedup_multi_choice_cardinality_collapse() -> None:
+    """Two correct options with identical text collapse to one after dedup.
+    answer_indices legitimately shrinks — identical options can't be shown twice."""
+    raw = json.dumps(
+        {
+            "questions": [
+                {
+                    "question": "Выберите верные утверждения.",
+                    "type": "multi_choice",
+                    "choices": ["A", "B", "A"],
+                    "answer_indices": [0, 2],
+                }
+            ]
+        }
+    )
+    agent = _agent(FakeLlmAdapter(responses=[raw]))
+    reply = await agent.handle(_request({"summary": _summary()}))
+    assert reply is not None and reply.performative == Performative.INFORM
+    question = reply.content["questions"][0]
+    assert question["choices"] == ["A", "B"]
+    assert question["answer_indices"] == [0]
+
+
+async def test_dedup_is_noop_for_open_answer() -> None:
+    """_dedup_choices must leave open_answer questions completely unchanged."""
+    from src.agents.test_generator import _dedup_choices
+    from src.core.schemas import QuizQuestion
+
+    q = QuizQuestion(
+        type="open_answer", question="Объясните понятие.", choices=[], answer_idx=None, answer_indices=None
+    )
+    result = _dedup_choices(q)
+    assert result is q  # identical object — truly a no-op
+
+
 async def test_tolerates_numeric_source_chunk_id_and_extra_fields() -> None:
     # Real GigaChat fills source_chunk_id with an integer and may add stray fields;
     # the LLM-facing model ignores them (the chunk linkage is internal, set to None).

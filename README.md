@@ -124,6 +124,16 @@ uvicorn src.main:app --reload
 
 The API is available at `http://localhost:8000`. Interactive docs at `http://localhost:8000/docs`.
 
+> **Base install (no ML models):** a `.[dev]` install without the `ml` extra uses real
+> backend defaults, which will raise `ModuleNotFoundError` at task time. Either install
+> `.[dev,ml]` and provide model weights / API keys, or override the backends with:
+>
+> ```bash
+> TRANSCRIBER_BACKEND=fake OCR_BACKEND=fake NER_BACKEND=fake uvicorn src.main:app --reload
+> ```
+>
+> Leave `GIGACHAT_CREDENTIALS` unset (or blank) to keep the LLM on the in-process Fake.
+
 ### 6. Submit a task
 
 ```bash

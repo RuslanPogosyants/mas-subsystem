@@ -84,7 +84,7 @@ class AgentBase(ABC):
             reply = await self.handle(message)
             outcome = "refuse" if reply is not None and reply.performative == Performative.REFUSE else "inform"
             return reply
-        except (OSError, ConnectionError, TimeoutError, RuntimeError) as error:
+        except (OSError, ConnectionError, TimeoutError, RuntimeError, ImportError) as error:
             logger.exception(f"agent {self.name} adapter error: {error}")
             outcome = "refuse"
             return self._refuse(message, reason=f"adapter error: {error.__class__.__name__}")

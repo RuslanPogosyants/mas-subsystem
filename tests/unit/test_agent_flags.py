@@ -1,4 +1,5 @@
-"""Unit tests for the AgentBase resilience flags (FORCE_REFUSE / HANG_AGENT)."""
+"""Unit tests for the AgentBase resilience flags (FORCE_REFUSE / HANG_AGENT)
+and adapter-error handling (ImportError -> graceful refuse)."""
 
 from __future__ import annotations
 
@@ -6,8 +7,10 @@ import asyncio
 
 import pytest
 from src.adapters.transcriber import FakeTranscriberAdapter
+from src.agents.base import AgentBase
 from src.agents.transcriber import TranscriberAgent
 from src.core.messages import Message, Performative, make_message
+from src.core.schemas import Operation
 
 from tests.support.fake_bus import FakeBus
 
@@ -48,3 +51,29 @@ async def test_hang_agent_never_returns(monkeypatch: pytest.MonkeyPatch) -> None
     with pytest.raises(TimeoutError):
         async with asyncio.timeout(0.3):
             await _agent()._safe_handle(_request())
+
+
+class _ImportErrorAgent(AgentBase):
+    """Stub agent whose handle() raises ModuleNotFoundError — simulates a missing ML lib."""
+
+    name = "ImportErrorAgent"
+
+    def __init__(self) -> None:
+        super().__init__(
+            bus=FakeBus(),
+            channel="agent.import_error_stub",
+            group="worker-import_error_stub",
+            operation=Operation.F1_TRANSCRIBE,
+        )
+
+    async def handle(self, message: Message) -> Message | None:
+        raise ModuleNotFoundError("faster_whisper")
+
+
+async def test_module_not_found_becomes_refuse() -> None:
+    """ImportError from a handle() call must produce a refuse, not an unhandled exception."""
+    agent = _ImportErrorAgent()
+    reply = await agent._safe_handle(_request())
+    assert reply is not None
+    assert reply.performative == Performative.REFUSE
+    assert "adapter error" in reply.content["reason"]

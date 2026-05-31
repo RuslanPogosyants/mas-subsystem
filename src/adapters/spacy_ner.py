@@ -12,6 +12,10 @@ chosen model is absent, the lazy `spacy.load` raises ``OSError``, which
 ``AgentBase._safe_handle`` turns into a graceful refuse.
 
 Loaded pipelines are cached by language to avoid repeated model loading.
+
+``extract_many`` groups texts by selected language and processes each
+language-group via ``nlp.pipe`` for efficient batching.  Results are reassembled
+in the original input order.
 """
 
 from __future__ import annotations
@@ -19,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import itertools
 import time
+from collections import defaultdict
 from typing import Any, Final
 
 from src.adapters.ner import TermCandidate
@@ -87,6 +92,44 @@ class SpacyNerAdapter:
         ]
         candidates.extend(self._adj_noun_bigrams(doc))
         return candidates
+
+    async def extract_many(self, texts: list[str]) -> list[list[TermCandidate]]:
+        """Extract candidates for all texts, batching same-language texts via nlp.pipe.
+
+        Texts are grouped by detected language so each language-specific pipeline
+        can process its group in one ``nlp.pipe`` call.  Results are reassembled
+        in the original input order.
+        """
+        if not texts:
+            return []
+
+        # Group indices by language so we can batch per pipeline.
+        lang_groups: dict[str, list[int]] = defaultdict(list)
+        for idx, text in enumerate(texts):
+            lang_groups[self._select_language(text)].append(idx)
+
+        results: list[list[TermCandidate]] = [[] for _ in texts]
+
+        for language, indices in lang_groups.items():
+            nlp = self._ensure_nlp(language)
+            group_texts = [texts[i] for i in indices]
+
+            def _run_pipe(n: Any, t: list[str]) -> list[Any]:
+                return list(n.pipe(t))
+
+            start = time.perf_counter()
+            try:
+                docs = await asyncio.to_thread(_run_pipe, nlp, group_texts)
+            finally:
+                MODEL_CALL_SECONDS.labels(adapter="spacy", operation="F5").observe(time.perf_counter() - start)
+            for idx, doc in zip(indices, docs, strict=True):
+                candidates: list[TermCandidate] = [
+                    TermCandidate(text=ent.text, lemma=ent.lemma_.lower(), label=ent.label_) for ent in doc.ents
+                ]
+                candidates.extend(self._adj_noun_bigrams(doc))
+                results[idx] = candidates
+
+        return results
 
     @staticmethod
     def _adj_noun_bigrams(doc: Any) -> list[TermCandidate]:

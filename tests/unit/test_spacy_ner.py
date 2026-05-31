@@ -125,3 +125,76 @@ class TestPipelineCaching:
             await adapter.extract("Ещё один русский текст")
             # Same object in cache
             assert adapter._pipelines.get("ru") is ru_pipeline
+
+
+# ---------------------------------------------------------------------------
+# extract_many
+# ---------------------------------------------------------------------------
+
+
+class TestExtractMany:
+    def _make_nlp_with_pipe(self) -> Any:
+        """Return a fake nlp whose .pipe() returns a list of empty docs."""
+        doc = MagicMock()
+        doc.ents = []
+        doc.__iter__ = MagicMock(return_value=iter([]))
+        nlp = MagicMock()
+        nlp.return_value = doc  # for direct calls
+        nlp.pipe = MagicMock(side_effect=lambda texts, **kw: [doc for _ in texts])
+        return nlp
+
+    @pytest.mark.asyncio
+    async def test_extract_many_returns_list_per_text(self) -> None:
+        nlp = self._make_nlp_with_pipe()
+        with patch("spacy.load", return_value=nlp):
+            adapter = SpacyNerAdapter()
+            texts = ["Первый текст на русском", "Второй текст на русском"]
+            results = await adapter.extract_many(texts)
+        assert len(results) == 2
+        assert all(isinstance(r, list) for r in results)
+
+    @pytest.mark.asyncio
+    async def test_extract_many_uses_pipe_not_individual_calls(self) -> None:
+        """nlp.pipe must be called (batching), not nlp() per text."""
+        nlp = self._make_nlp_with_pipe()
+        with patch("spacy.load", return_value=nlp):
+            adapter = SpacyNerAdapter()
+            await adapter.extract_many(["Первый", "Второй", "Третий"])
+        nlp.pipe.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_extract_many_empty_input(self) -> None:
+        nlp = self._make_nlp_with_pipe()
+        with patch("spacy.load", return_value=nlp):
+            adapter = SpacyNerAdapter()
+            results = await adapter.extract_many([])
+        assert results == []
+
+    @pytest.mark.asyncio
+    async def test_extract_many_mixed_languages_calls_pipe_per_language(self) -> None:
+        """Mixed-language input should call pipe on each language pipeline separately."""
+        nlp_ru = self._make_nlp_with_pipe()
+        nlp_en = self._make_nlp_with_pipe()
+
+        def _fake_load(name: str) -> Any:
+            return nlp_en if "en" in name else nlp_ru
+
+        with patch("spacy.load", side_effect=_fake_load):
+            adapter = SpacyNerAdapter(model="ru_core_news_lg", en_model="en_core_web_sm")
+            # 2 Russian + 2 English texts
+            texts = [
+                "Русский первый",
+                "English first",
+                "Русский второй",
+                "English second",
+            ]
+            results = await adapter.extract_many(texts)
+
+        assert len(results) == 4
+        nlp_ru.pipe.assert_called_once()
+        nlp_en.pipe.assert_called_once()
+        # Each language got 2 texts
+        ru_call_texts = list(nlp_ru.pipe.call_args[0][0])
+        en_call_texts = list(nlp_en.pipe.call_args[0][0])
+        assert len(ru_call_texts) == 2
+        assert len(en_call_texts) == 2

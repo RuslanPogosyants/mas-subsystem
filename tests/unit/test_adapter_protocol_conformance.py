@@ -20,6 +20,7 @@ def test_real_adapters_expose_protocol_methods() -> None:
     assert callable(WhisperTranscriberAdapter.transcribe)
     assert callable(PymupdfOcrAdapter.extract)
     assert callable(SpacyNerAdapter.extract)
+    assert callable(SpacyNerAdapter.extract_many)
     assert callable(SentenceTransformerEmbeddingAdapter.encode)
     # Protocols themselves are importable and non-None (structural conformance marker)
     assert all([EmbeddingAdapter, LlmAdapter, NerAdapter, OcrAdapter, TranscriberAdapter])

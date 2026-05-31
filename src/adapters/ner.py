@@ -31,6 +31,14 @@ class NerAdapter(Protocol):
         """Return term candidates found in `text`."""
         ...
 
+    async def extract_many(self, texts: list[str]) -> list[list[TermCandidate]]:
+        """Return term candidates for each text in `texts`.
+
+        Implementations may process texts in parallel or in batch for efficiency.
+        The returned list has the same length and order as `texts`.
+        """
+        ...
+
 
 class FakeNerAdapter:
     """Deterministic NerAdapter for tests and the demo pipeline.
@@ -49,3 +57,7 @@ class FakeNerAdapter:
         return [
             TermCandidate(text=token, lemma=token.lower()) for token in text.split() if len(token) >= _MIN_TOKEN_LEN
         ]
+
+    async def extract_many(self, texts: list[str]) -> list[list[TermCandidate]]:
+        """Extract candidates from each text individually and return results in order."""
+        return [await self.extract(text) for text in texts]

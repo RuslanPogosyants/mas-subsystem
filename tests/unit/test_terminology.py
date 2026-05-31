@@ -327,3 +327,47 @@ async def test_existing_grafik_grafit_still_separate_under_b2() -> None:
     lemmas = [t.lemma for t in terms]
     assert "график" in lemmas
     assert "графит" in lemmas
+
+
+# ---------------------------------------------------------------------------
+# C2: extract_many batching — results identical to per-text extract
+# ---------------------------------------------------------------------------
+
+
+async def test_c2_multi_chunk_same_results_as_before() -> None:
+    """TerminologyAgent with extract_many produces the same ranked terms as the
+    per-chunk extract loop it replaced.  Uses multiple chunks to exercise the
+    full aggregation path.
+    """
+    candidates = [
+        TermCandidate(text="граф", lemma="граф"),
+        TermCandidate(text="граф", lemma="граф"),
+        TermCandidate(text="дерево", lemma="дерево"),
+    ]
+    agent = _agent(candidates)
+    reply = await agent.handle(
+        _request({"chunks": [_chunk("c1", "граф граф дерево"), _chunk("c2", "граф дерево")], "top_n": 10})
+    )
+    assert reply is not None and reply.performative == Performative.INFORM
+    terms = [Term.model_validate(item) for item in reply.content["terms"]]
+    # граф appears in both chunks, dерево in both chunks → both survive
+    lemmas = [t.lemma for t in terms]
+    assert "граф" in lemmas
+    assert "дерево" in lemmas
+    # граф must rank first (higher frequency across chunks)
+    assert lemmas[0] == "граф"
+
+
+async def test_c2_single_chunk_results_unchanged() -> None:
+    """Single-chunk path through extract_many must be identical to the old loop."""
+    candidates = [
+        TermCandidate(text="массив", lemma="массив"),
+        TermCandidate(text="массива", lemma="массива"),
+        TermCandidate(text="массива", lemma="массива"),
+    ]
+    agent = _agent(candidates)
+    reply = await agent.handle(_request({"chunks": [_chunk("c1", "x")]}))
+    assert reply is not None and reply.performative == Performative.INFORM
+    terms = [Term.model_validate(item) for item in reply.content["terms"]]
+    assert len(terms) == 1
+    assert terms[0].frequency == 3

@@ -209,8 +209,11 @@ class TerminologyAgent(AgentBase):
         frequency: dict[str, int] = {}
         chunk_ids: dict[str, set[str]] = {}
         first_seen: dict[str, tuple[str, str, str]] = {}  # lemma -> (surface, label, chunk_id)
-        for chunk_id, content in sources:
-            for candidate in await self._ner.extract(content):
+        chunk_ids_list = [chunk_id for chunk_id, _ in sources]
+        contents = [content for _, content in sources]
+        all_candidates = await self._ner.extract_many(contents)
+        for chunk_id, candidates in zip(chunk_ids_list, all_candidates, strict=True):
+            for candidate in candidates:
                 lemma = candidate.lemma.lower().strip()
                 if len(lemma) < _MIN_LEMMA_LEN or lemma in self._stopwords:
                     continue

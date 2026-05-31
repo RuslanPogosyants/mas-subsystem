@@ -10,6 +10,7 @@ import pytest_asyncio
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator
+    from pathlib import Path
 
     from testcontainers.postgres import PostgresContainer
     from testcontainers.redis import RedisContainer
@@ -38,6 +39,14 @@ def _enable_demo_corpus(monkeypatch: pytest.MonkeyPatch) -> None:
     test suite exercises the full F6 path with the built-in demo corpus, so enable
     it here. Tests asserting the off behaviour override DEMO_MODE via monkeypatch."""
     monkeypatch.setenv("DEMO_MODE", "true")
+
+
+@pytest.fixture(autouse=True)
+def _isolate_corpus(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A real recommender corpus is committed at the default 'corpus/' path, which
+    would make the app load the e5 model. Point tests at an empty dir so F6 stays on
+    the fake/demo path and no model loads. Tests override CORPUS_PATH as needed."""
+    monkeypatch.setenv("CORPUS_PATH", str(tmp_path))
 
 
 @pytest.fixture(scope="session")

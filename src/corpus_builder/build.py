@@ -124,7 +124,9 @@ def build(out_dir: str = "corpus", model: str = "intfloat/multilingual-e5-base")
         for paper in papers:
             meta = {key: paper[key] for key in ("title", "authors", "year", "url")}
             handle.write(json.dumps(meta, ensure_ascii=False) + "\n")
-    numpy.save(base / "papers.npy", embeddings)
+    # float16 halves the on-disk size (keeps the fixture under the repo's large-file
+    # limit); cosine ranking is unaffected at retrieval precision.
+    numpy.save(base / "papers.npy", numpy.asarray(embeddings).astype(numpy.float16))
     return len(papers)
 
 

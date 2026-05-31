@@ -122,3 +122,12 @@ async def test_falls_back_to_partial_when_reduce_declined() -> None:
     assert reply is not None and reply.performative == Performative.INFORM
     by_type = {section.type: section.text for section in Summary.model_validate(reply.content).sections}
     assert by_type["thesis"] == "первый"
+
+
+async def test_system_prompt_requires_full_key_points() -> None:
+    """_SYSTEM_PROMPT must instruct fuller key_points (all key ideas, not one sentence)."""
+    from src.agents.summarizer import _SYSTEM_PROMPT
+
+    prompt_lower = _SYSTEM_PROMPT.lower()
+    assert "перечисли все" in prompt_lower
+    assert "ключевые тезисы" in prompt_lower

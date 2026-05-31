@@ -26,6 +26,7 @@ _DATA_DIR: Final[Path] = Path(__file__).resolve().parents[2] / "data"
 _DEFAULT_TOP_N: Final[int] = 10
 _MIN_LEMMA_LEN: Final[int] = 2
 _MIN_SHARED_PREFIX: Final[int] = 4  # minimum shared-prefix length for near-duplicate last-token check
+_MAX_INFLECTION_SUFFIX: Final[int] = 2  # maximum extra trailing characters in a prefix-relationship inflection
 
 # Russian vowels and soft/hard signs that can appear as inflection endings.
 # Merge is allowed only when BOTH differing final characters belong to this set,
@@ -47,33 +48,62 @@ def _is_noise_lemma(lemma: str) -> bool:
     return any(len(token) == _DOTTED_INITIAL_LEN and token.endswith(".") for token in lemma.split())
 
 
+def _rule1_same_length(last_a: str, last_b: str) -> bool:
+    """Rule 1: last tokens identical length, differ only in one inflection-ending char."""
+    shared_prefix = last_a[:-1]
+    return (
+        shared_prefix == last_b[:-1]
+        and len(shared_prefix) >= _MIN_SHARED_PREFIX
+        and last_a[-1] in _RU_INFLECTION_ENDINGS
+        and last_b[-1] in _RU_INFLECTION_ENDINGS
+    )
+
+
+def _rule2_prefix_relationship(last_a: str, last_b: str) -> bool:
+    """Rule 2: one last token is a prefix of the other; extra chars are all inflection endings."""
+    shorter, longer = (last_a, last_b) if len(last_a) < len(last_b) else (last_b, last_a)
+    extra_len = len(longer) - len(shorter)
+    return (
+        extra_len <= _MAX_INFLECTION_SUFFIX
+        and len(shorter) >= _MIN_SHARED_PREFIX
+        and longer.startswith(shorter)
+        and all(ch in _RU_INFLECTION_ENDINGS for ch in longer[len(shorter) :])
+    )
+
+
 def _are_near_duplicate_lemmas(a: str, b: str) -> bool:
     """Return True when *a* and *b* should be treated as the same term.
 
-    Conservative rule: same token count, all non-final tokens are identical,
-    and the last tokens either match exactly OR are of the same length and
-    differ ONLY in their final character, where that final character is a
-    Russian inflection ending in both tokens (to avoid over-merging distinct
-    words like «график»/«графит»), with a shared leading prefix of at least
-    _MIN_SHARED_PREFIX characters.
+    Two rules are applied in order; either is sufficient:
+
+    1. **Single-character final-char substitution**: same token count, all
+       non-final tokens identical, last tokens of equal length differ only in
+       their final character, that character is a Russian inflection ending in
+       both, and the shared leading prefix is at least ``_MIN_SHARED_PREFIX``
+       characters long.
+       Example: «двойной кавычка» / «двойной кавычки».
+
+    2. **Suffix addition**: same token count, all non-final tokens identical,
+       and the two last tokens are in a *prefix relationship* — one equals the
+       other plus 1–``_MAX_INFLECTION_SUFFIX`` extra trailing characters, the
+       shorter token is at least ``_MIN_SHARED_PREFIX`` characters long, and
+       every extra trailing character is a Russian inflection ending.
+       Example: «массив» / «массива» (extra «а» ∈ endings).
+
+    Deliberately excluded: «тип» / «типаж» (extra «ж» ∉ endings);
+    «код» / «кодер» (extra «р» ∉ endings); «график» / «графит» (neither is
+    a prefix of the other and final chars к/т ∉ endings).
     """
     tokens_a = a.split()
     tokens_b = b.split()
-    if len(tokens_a) != len(tokens_b):
-        return False
-    if tokens_a[:-1] != tokens_b[:-1]:
+    if len(tokens_a) != len(tokens_b) or tokens_a[:-1] != tokens_b[:-1]:
         return False
     last_a, last_b = tokens_a[-1], tokens_b[-1]
     if last_a == last_b:
         return True
-    # Differ only in final character: same length, identical up to last char.
-    if len(last_a) != len(last_b):
-        return False
-    shared_prefix = last_a[:-1]
-    if shared_prefix != last_b[:-1] or len(shared_prefix) < _MIN_SHARED_PREFIX:
-        return False
-    # Both differing final characters must be Russian inflection endings.
-    return last_a[-1] in _RU_INFLECTION_ENDINGS and last_b[-1] in _RU_INFLECTION_ENDINGS
+    if len(last_a) == len(last_b):
+        return _rule1_same_length(last_a, last_b)
+    return _rule2_prefix_relationship(last_a, last_b)
 
 
 _CandidateMaps = tuple[dict[str, int], dict[str, set[str]], dict[str, tuple[str, str, str]]]

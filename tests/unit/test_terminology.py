@@ -233,3 +233,97 @@ async def test_non_inflection_final_chars_not_merged() -> None:
     lemmas = [t.lemma for t in terms]
     assert "график" in lemmas, "график must not be merged with графит"
     assert "графит" in lemmas, "графит must not be merged with график"
+
+
+# ---------------------------------------------------------------------------
+# B2: Suffix-addition inflection merging (prefix relationship)
+# ---------------------------------------------------------------------------
+
+
+async def test_suffix_addition_inflection_merged() -> None:
+    """«массив» and «массива» differ by one trailing «а» (an inflection ending)
+    and «массив» is a prefix of «массива» — they must collapse into ONE term.
+    """
+    candidates = [
+        TermCandidate(text="массив", lemma="массив"),
+        TermCandidate(text="массива", lemma="массива"),
+        TermCandidate(text="массива", lemma="массива"),
+    ]
+    agent = _agent(candidates)
+    reply = await agent.handle(_request({"chunks": [_chunk("c1", "x")]}))
+    assert reply is not None and reply.performative == Performative.INFORM
+    terms = [Term.model_validate(item) for item in reply.content["terms"]]
+    assert len(terms) == 1, "массив/массива must merge into one term"
+    # Frequency must be summed (1 + 2 = 3)
+    assert terms[0].frequency == 3
+
+
+async def test_non_inflection_extra_char_not_merged() -> None:
+    """«тип» / «типаж»: extra chars «аж» — «ж» is NOT a Russian inflection ending.
+    Must remain two separate terms.
+    """
+    candidates = [
+        TermCandidate(text="тип", lemma="тип"),
+        TermCandidate(text="типаж", lemma="типаж"),
+    ]
+    agent = _agent(candidates)
+    reply = await agent.handle(_request({"chunks": [_chunk("c1", "x")]}))
+    assert reply is not None and reply.performative == Performative.INFORM
+    terms = [Term.model_validate(item) for item in reply.content["terms"]]
+    lemmas = [t.lemma for t in terms]
+    assert "тип" in lemmas, "тип must not merge with типаж"
+    assert "типаж" in lemmas, "типаж must not merge with тип"
+
+
+async def test_non_inflection_extra_chars_two_not_merged() -> None:
+    """«код» / «кодер»: extra chars «ер» — «р» is NOT a Russian inflection ending.
+    Must remain two separate terms.
+    """
+    candidates = [
+        TermCandidate(text="код", lemma="код"),
+        TermCandidate(text="кодер", lemma="кодер"),
+    ]
+    agent = _agent(candidates)
+    reply = await agent.handle(_request({"chunks": [_chunk("c1", "x")]}))
+    assert reply is not None and reply.performative == Performative.INFORM
+    terms = [Term.model_validate(item) for item in reply.content["terms"]]
+    lemmas = [t.lemma for t in terms]
+    assert "код" in lemmas, "код must not merge with кодер"
+    assert "кодер" in lemmas, "кодер must not merge with код"
+
+
+async def test_suffix_addition_two_token_phrase_merged() -> None:
+    """Verify prefix-relationship rule works for two-token phrases.
+
+    «двойной массив» (base form) vs «двойной массива» (genitive, extra «а» ∈ endings).
+    «массив» is a prefix of «массива»; «двойной» == «двойной» → must merge.
+    """
+    candidates = [
+        TermCandidate(text="двойной массив", lemma="двойной массив"),
+        TermCandidate(text="двойного массива", lemma="двойной массива"),
+        TermCandidate(text="двойного массива", lemma="двойной массива"),
+    ]
+    agent = _agent(candidates)
+    reply = await agent.handle(_request({"chunks": [_chunk("c1", "x")]}))
+    assert reply is not None and reply.performative == Performative.INFORM
+    terms = [Term.model_validate(item) for item in reply.content["terms"]]
+    assert len(terms) == 1, "двойной массив/массива must merge"
+    assert terms[0].frequency == 3
+
+
+async def test_existing_grafik_grafit_still_separate_under_b2() -> None:
+    """«график» / «графит»: equal length, final chars к/т not in endings.
+    Rule 1 rejects (к/т not endings). Rule 2 cannot apply (equal length).
+    Must remain separate.
+    """
+    candidates = [
+        TermCandidate(text="график", lemma="график"),
+        TermCandidate(text="графит", lemma="графит"),
+    ]
+    agent = _agent(candidates)
+    reply = await agent.handle(_request({"chunks": [_chunk("c1", "x")]}))
+    assert reply is not None and reply.performative == Performative.INFORM
+    terms = [Term.model_validate(item) for item in reply.content["terms"]]
+    lemmas = [t.lemma for t in terms]
+    assert "график" in lemmas
+    assert "графит" in lemmas

@@ -46,6 +46,8 @@ class Subtask(BaseModel):
     operation: Operation
     payload: dict[str, object] = Field(default_factory=dict)
     depends_on: list[str] = Field(default_factory=list)
+    # Descriptive metadata (ingestion vs analysis); since D1 it no longer gates the
+    # final status — determine_final_status keys only on how many subtasks succeeded.
     required: bool
     join: JoinPolicy = "all"
 

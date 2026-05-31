@@ -21,8 +21,9 @@ AGENT_TIMEOUTS_SEC: Final[dict[str, float]] = {
     "recommender": 15.0,
 }
 
-# A hard per-task deadline can be wired into the Coordinator loop in a later
-# milestone if needed; per-agent timeouts + RETRY_MAX already bound runtime.
+# Per-agent timeouts + RETRY_MAX bound a single attempt; the Coordinator also
+# enforces a hard per-task global deadline (coord_global_deadline_sec, D3) that
+# finalises an overrunning task with whatever partial results it has.
 
 
 def compute_backoff(retry_count: int) -> float:

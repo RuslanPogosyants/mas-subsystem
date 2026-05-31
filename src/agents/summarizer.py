@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Final
 
 from loguru import logger
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from src.agents._llm_json import parse_with_retry
 from src.agents.base import AgentBase
@@ -28,15 +28,29 @@ if TYPE_CHECKING:
 _MAX_PARSE_RETRIES: Final[int] = 2
 _SYSTEM_PROMPT: Final[str] = (
     "Ты делаешь структурированное саммари учебного текста. Ответь СТРОГО одним "
-    "JSON-объектом с ключами introduction, key_points, conclusions; все значения "
-    "— непустые строки на русском языке. Без markdown и без пояснений.\n"
+    "JSON-объектом с ключами introduction, key_points, conclusions. "
+    "Все три значения — строки (НЕ объекты и НЕ массивы), непустые, на русском языке. "
+    "Без markdown и без пояснений.\n"
     "Требования к полноте:\n"
-    "- introduction: одно-два предложения о теме и цели материала.\n"
-    "- key_points: подробно перечисли все ключевые тезисы, понятия и факты из текста "
-    "(не одно предложение; по пункту на каждую значимую идею). "
-    "Не сокращай и не объединяй разные идеи в одну строку.\n"
-    "- conclusions: одно-два предложения с итоговым выводом."
+    "- introduction: краткая строка (одно-два предложения) о теме и цели материала.\n"
+    "- key_points: одна развёрнутая строка — перечисли все ключевые тезисы, "
+    "понятия и факты из текста (например, через «; »). "
+    "Не сокращай и не объединяй разные идеи. Не объект и не массив — только строка.\n"
+    "- conclusions: краткая строка (одно-два предложения) с итоговым выводом."
 )
+
+
+def _flatten_to_text(value: object) -> str:
+    """Recursively flatten a dict/list/scalar to a single "; "-joined string."""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, dict):
+        parts = [_flatten_to_text(v) for v in value.values()]
+        return "; ".join(p for p in parts if p)
+    if isinstance(value, list):
+        parts = [_flatten_to_text(item) for item in value]
+        return "; ".join(p for p in parts if p)
+    return str(value)
 
 
 class _RawSummary(BaseModel):
@@ -45,6 +59,11 @@ class _RawSummary(BaseModel):
     introduction: str
     key_points: str
     conclusions: str
+
+    @field_validator("introduction", "key_points", "conclusions", mode="before")
+    @classmethod
+    def _coerce_to_str(cls, value: object) -> str:
+        return _flatten_to_text(value)
 
 
 class SummarizerAgent(AgentBase):

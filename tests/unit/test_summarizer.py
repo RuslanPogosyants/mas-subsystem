@@ -131,3 +131,106 @@ async def test_system_prompt_requires_full_key_points() -> None:
     prompt_lower = _SYSTEM_PROMPT.lower()
     assert "перечисли все" in prompt_lower
     assert "ключевые тезисы" in prompt_lower
+
+
+# ---------------------------------------------------------------------------
+# Coercion tests (Layer 1): structured fields flattened to plain strings
+# ---------------------------------------------------------------------------
+
+
+async def test_dict_key_points_coerced_to_string() -> None:
+    """GigaChat sometimes returns key_points as a dict; must be coerced to non-empty str."""
+    import json
+
+    structured_response = json.dumps(
+        {
+            "introduction": "вступление",
+            "key_points": {"a": "тезис один", "b": "тезис два"},
+            "conclusions": "итог",
+        }
+    )
+    llm = FakeLlmAdapter(responses=[structured_response])
+    agent = _agent(llm)
+    reply = await agent.handle(_request({"chunks": [{"id": "c1", "content": "текст про ML"}]}))
+    assert reply is not None and reply.performative == Performative.INFORM
+    summary = Summary.model_validate(reply.content)
+    by_type = {section.type: section.text for section in summary.sections}
+    thesis = by_type["thesis"]
+    assert "тезис один" in thesis
+    assert "тезис два" in thesis
+
+
+async def test_list_key_points_coerced_to_string() -> None:
+    """GigaChat sometimes returns key_points as a list; must be coerced to non-empty str."""
+    import json
+
+    structured_response = json.dumps(
+        {
+            "introduction": "введение",
+            "key_points": ["первый", "второй"],
+            "conclusions": "заключение",
+        }
+    )
+    llm = FakeLlmAdapter(responses=[structured_response])
+    agent = _agent(llm)
+    reply = await agent.handle(_request({"chunks": [{"id": "c1", "content": "текст"}]}))
+    assert reply is not None and reply.performative == Performative.INFORM
+    summary = Summary.model_validate(reply.content)
+    by_type = {section.type: section.text for section in summary.sections}
+    thesis = by_type["thesis"]
+    assert "первый" in thesis
+    assert "второй" in thesis
+
+
+async def test_string_key_points_unchanged() -> None:
+    """A plain string key_points must round-trip unchanged."""
+    llm = FakeLlmAdapter(responses=[_valid_json(kp="нормальный тезис")])
+    agent = _agent(llm)
+    reply = await agent.handle(_request({"chunks": [{"id": "c1", "content": "текст"}]}))
+    assert reply is not None and reply.performative == Performative.INFORM
+    summary = Summary.model_validate(reply.content)
+    by_type = {section.type: section.text for section in summary.sections}
+    assert by_type["thesis"] == "нормальный тезис"
+
+
+def test_system_prompt_demands_plain_strings() -> None:
+    """_SYSTEM_PROMPT must explicitly instruct plain strings, not objects or arrays."""
+    from src.agents.summarizer import _SYSTEM_PROMPT
+
+    prompt_lower = _SYSTEM_PROMPT.lower()
+    assert "строк" in prompt_lower
+    assert "не объект" in prompt_lower
+
+
+def test_raw_summary_model_validate_coercion() -> None:
+    """Direct _RawSummary.model_validate tests for the coercion logic."""
+    from src.agents.summarizer import _RawSummary
+
+    # dict coercion
+    raw = _RawSummary.model_validate(
+        {"introduction": "i", "key_points": {"a": "тезис один", "b": "тезис два"}, "conclusions": "c"}
+    )
+    assert "тезис один" in raw.key_points
+    assert "тезис два" in raw.key_points
+    assert isinstance(raw.key_points, str)
+
+    # list coercion
+    raw2 = _RawSummary.model_validate({"introduction": "i", "key_points": ["первый", "второй"], "conclusions": "c"})
+    assert "первый" in raw2.key_points
+    assert "второй" in raw2.key_points
+    assert isinstance(raw2.key_points, str)
+
+    # plain string passthrough
+    raw3 = _RawSummary.model_validate({"introduction": "i", "key_points": "уже строка", "conclusions": "c"})
+    assert raw3.key_points == "уже строка"
+
+    # nested dict coercion
+    raw4 = _RawSummary.model_validate(
+        {
+            "introduction": "i",
+            "key_points": {"outer": {"inner": "вложенный тезис"}},
+            "conclusions": "c",
+        }
+    )
+    assert "вложенный тезис" in raw4.key_points
+    assert isinstance(raw4.key_points, str)

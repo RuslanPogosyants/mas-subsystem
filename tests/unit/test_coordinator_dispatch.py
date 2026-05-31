@@ -355,3 +355,55 @@ async def test_persist_result_gives_up_without_raising() -> None:
     # A doomed write must not raise — it cannot be allowed to wedge the dispatch loop.
     await coord._persist_result("task-1", Operation.F3_SUMMARIZE, {"summary_id": "s"})
     assert store.results == []
+
+
+def _coordinator_with_deadline(bus: FakeBus, store: FakeTaskStore, clock: Clock, deadline_sec: float) -> Coordinator:
+    return Coordinator(
+        bus=bus,
+        store=store,
+        agent_timeouts=_FAST_TIMEOUTS,
+        clock=clock,
+        global_deadline_sec=deadline_sec,
+    )
+
+
+async def test_global_deadline_finalizes_partial_with_existing_results() -> None:
+    # F1 succeeds; F6 never replies. Once wall-clock passes the global deadline the
+    # task is finalized with whatever exists (PARTIAL_READY) and removed from _tasks.
+    bus, store, clock = FakeBus(), FakeTaskStore(), Clock()
+    coordinator = _coordinator_with_deadline(bus, store, clock, deadline_sec=30.0)
+    await coordinator.submit(_task("task-1", [Operation.F1_TRANSCRIBE, Operation.F6_RECOMMEND], pdf=False))
+    f1_request = bus.requests_for(channel_for_agent("transcriber"))[0]
+    bus.feed_inbox(_inform(f1_request, {"chunks": []}))
+    await coordinator._tick()  # F1 resolves; F6 still pending
+    assert "task-1" in coordinator._tasks
+    clock.advance(31.0)  # cross the global deadline
+    await coordinator._tick()
+    assert "task-1" not in coordinator._tasks
+    assert store.artifacts["task-1"]["status"] == "partial_ready"
+
+
+async def test_global_deadline_finalizes_failed_when_nothing_succeeded() -> None:
+    # No subtask ever replies; crossing the deadline finalizes the task as FAILED.
+    bus, store, clock = FakeBus(), FakeTaskStore(), Clock()
+    coordinator = _coordinator_with_deadline(bus, store, clock, deadline_sec=30.0)
+    await coordinator.submit(_task("task-1", [Operation.F1_TRANSCRIBE], pdf=False))
+    assert "task-1" in coordinator._tasks
+    clock.advance(31.0)
+    await coordinator._tick()
+    assert "task-1" not in coordinator._tasks
+    assert store.artifacts["task-1"]["status"] == "failed"
+
+
+async def test_task_within_global_deadline_is_not_prematurely_finalized() -> None:
+    # A pending task whose wall-clock is still under the deadline must keep waiting.
+    bus, store, clock = FakeBus(), FakeTaskStore(), Clock()
+    coordinator = _coordinator_with_deadline(bus, store, clock, deadline_sec=300.0)
+    await coordinator.submit(_task("task-1", [Operation.F1_TRANSCRIBE, Operation.F6_RECOMMEND], pdf=False))
+    f1_request = bus.requests_for(channel_for_agent("transcriber"))[0]
+    bus.feed_inbox(_inform(f1_request, {"chunks": []}))
+    await coordinator._tick()
+    clock.advance(10.0)  # well under the deadline
+    await coordinator._tick()
+    assert "task-1" in coordinator._tasks
+    assert "task-1" not in store.artifacts

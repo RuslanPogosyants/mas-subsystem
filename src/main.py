@@ -227,6 +227,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         store=DbTaskStore(session_factory),
         recovery=DbTaskRecovery(session_factory),
         agent_timeouts=_agent_timeouts(settings),
+        global_deadline_sec=settings.coord_global_deadline_sec,
     )
 
     agent_tasks = [asyncio.create_task(agent.run()) for agent in agents]

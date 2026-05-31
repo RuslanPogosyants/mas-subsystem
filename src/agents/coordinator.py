@@ -51,6 +51,9 @@ _INBOX_BLOCK_MS: Final[int] = 200
 _INBOX_BATCH: Final[int] = 32
 _PERSIST_RETRIES: Final[int] = 3
 _PERSIST_RETRY_DELAY_SEC: Final[float] = 0.05
+# Effectively-unbounded default so tasks/tests that construct a Coordinator without
+# a deadline never expire spuriously; production passes settings.coord_global_deadline_sec.
+_DEFAULT_GLOBAL_DEADLINE_SEC: Final[float] = 1e9
 
 
 @dataclass(slots=True)
@@ -87,12 +90,14 @@ class Coordinator:
         recovery: TaskRecovery | None = None,
         agent_timeouts: dict[str, float] | None = None,
         clock: Callable[[], float] = time.monotonic,
+        global_deadline_sec: float = _DEFAULT_GLOBAL_DEADLINE_SEC,
     ) -> None:
         self._bus = bus
         self._store = store
         self._recovery = recovery
         self._timeouts = agent_timeouts or dict(AGENT_TIMEOUTS_SEC)
         self._clock = clock
+        self._global_deadline_sec = global_deadline_sec
         self._tasks: dict[str, TaskState] = {}
         self._idempotency = IdempotentReceiver()
         self._lock = asyncio.Lock()
@@ -192,6 +197,11 @@ class Coordinator:
                 try:
                     await self._advance(state, now)
                     await self._maybe_finalize(task_id, state, now)
+                    # Hard cap: a task still pending after _maybe_finalize (i.e. not removed
+                    # this tick) that has run past the global deadline is finalized with
+                    # whatever results exist, rather than waiting on stuck subtasks forever.
+                    if task_id in self._tasks and now - state.started_at > self._global_deadline_sec:
+                        await self._deadline_finalize(task_id, state, now)
                 except Exception as error:
                     logger.exception(f"coordinator abandoning task {task_id}: {error}")
                     await self._abandon(task_id)
@@ -335,6 +345,21 @@ class Coordinator:
     async def _maybe_finalize(self, task_id: str, state: TaskState, now: float) -> None:
         if state.pending:
             return
+        await self._finalize(state, now)
+        self._tasks.pop(task_id, None)
+        INFLIGHT_TASKS.dec()
+
+    async def _deadline_finalize(self, task_id: str, state: TaskState, now: float) -> None:
+        """Finalize a task that overran the global deadline with its partial results.
+
+        The status comes from determine_final_status over whatever results exist
+        (typically PARTIAL_READY, or FAILED if nothing succeeded). Mirrors the
+        removal / inflight-gauge bookkeeping of _maybe_finalize.
+        """
+        logger.warning(
+            f"task {task_id} exceeded global deadline of {self._global_deadline_sec}s "
+            f"({len(state.pending)} subtask(s) still pending); finalizing with partial results"
+        )
         await self._finalize(state, now)
         self._tasks.pop(task_id, None)
         INFLIGHT_TASKS.dec()

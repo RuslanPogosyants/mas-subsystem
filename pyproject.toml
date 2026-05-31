@@ -46,6 +46,8 @@ dev = [
     "mypy>=1.13,<2.0",
     "pre-commit>=4,<5",
     "types-redis",
+    "jiwer>=4.0,<5.0",
+    "rouge-score>=0.1.2",
 ]
 
 [build-system]
@@ -97,6 +99,10 @@ exclude = ["migrations/", "scripts/"]
 
 [[tool.mypy.overrides]]
 module = ["easyocr.*", "faster_whisper.*", "gigachat.*", "sentence_transformers.*", "fitz.*", "spacy.*", "numpy.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["jiwer.*", "rouge_score.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
